@@ -199,9 +199,7 @@ clean:
 
 static u32 tegra_i2c_func(struct i2c_adapter *adap)
 {
-	/* FIXME: For now keep it simple and don't support protocol mangling
-	   features */
-	return I2C_FUNC_I2C;
+	return I2C_FUNC_I2C | I2C_FUNC_SMBUS_EMUL;
 }
 
 static const struct i2c_algorithm tegra_i2c_algo = {
