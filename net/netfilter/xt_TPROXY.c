@@ -206,6 +206,7 @@ tproxy_laddr6(struct sk_buff *skb, const struct in6_addr *user_laddr,
 
 	rcu_read_lock();
 	indev = __in6_dev_get(skb->dev);
+	#if 0 // TODO: fix this to use 2.6.32 structures
 	if (indev)
 		list_for_each_entry(ifa, &indev->addr_list, if_list) {
 			if (ifa->flags & (IFA_F_TENTATIVE | IFA_F_DEPRECATED))
@@ -214,6 +215,7 @@ tproxy_laddr6(struct sk_buff *skb, const struct in6_addr *user_laddr,
 			laddr = &ifa->addr;
 			break;
 		}
+	#endif
 	rcu_read_unlock();
 
 	return laddr ? laddr : daddr;
