@@ -866,6 +866,16 @@ config NETFILTER_XT_MATCH_QUOTA
 	  If you want to compile it as a module, say M here and read
 	  <file:Documentation/kbuild/modules.txt>.  If unsure, say `N'.
 
+config NETFILTER_XT_MATCH_QUOTA2
+	tristate '"quota2" match support'
+	depends on NETFILTER_XTABLES
+	---help---
+	This option adds the "quota2" match which is an advanced form of
+	xt_quota that also allows counting upwards, and where the counter can
+	be set through procfs. This allows for simple interfacing of
+	accounting information. It also allows for a test mode without changing
+	the quota value.
+
 config NETFILTER_XT_MATCH_RATEEST
 	tristate '"rateest" match support'
 	depends on NETFILTER_ADVANCED
