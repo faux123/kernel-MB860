@@ -7,9 +7,6 @@ header-y += ip6t_ipv6header.h
 header-y += ip6t_hl.h
 header-y += ip6t_mh.h
 header-y += ip6t_opts.h
-header-y += ip6t_owner.h
-header-y += ip6t_physdev.h
-header-y += ip6t_policy.h
 header-y += ip6t_rt.h
 
 unifdef-y += ip6_tables.h
