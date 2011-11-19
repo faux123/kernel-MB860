@@ -14,7 +14,7 @@
 #include <linux/spinlock.h>
 #include <linux/init.h>
 #include <linux/module.h>
-#include <asm/atomic.h>
+#include <asm-generic/atomic64.h>
 
 /*
  * We use a hashed array of spinlocks to provide exclusive access

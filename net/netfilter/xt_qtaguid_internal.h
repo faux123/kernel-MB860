@@ -10,6 +10,7 @@
 #ifndef __XT_QTAGUID_INTERNAL_H__
 #define __XT_QTAGUID_INTERNAL_H__
 
+#include <asm-generic/atomic64.h>
 #include <linux/types.h>
 #include <linux/rbtree.h>
 #include <linux/spinlock_types.h>

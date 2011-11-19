@@ -16,6 +16,7 @@
 
 #include <linux/file.h>
 #include <linux/inetdevice.h>
+#include <linux/miscdevice.h>
 #include <linux/module.h>
 #include <linux/netfilter/x_tables.h>
 #include <linux/netfilter/xt_qtaguid.h>
@@ -29,6 +30,8 @@
 #include <linux/netfilter/xt_socket.h>
 #include "xt_qtaguid_internal.h"
 #include "xt_qtaguid_print.h"
+
+#include <asm-generic/atomic64.h>
 
 #define pr_warn_once printk
 /*
@@ -787,7 +790,7 @@ static int iface_stat_all_proc_read(char *page, char **num_items_returned,
 	int len;
 	struct iface_stat *iface_entry;
 	const struct net_device_stats *stats;
-	struct rtnl_link_stats64 no_dev_stats = {0};
+	struct net_device_stats no_dev_stats = {0};
 
 	if (unlikely(module_passive)) {
 		*eof = 1;
@@ -890,14 +893,14 @@ static void _iface_stat_set_active(struct iface_stat *entry,
 		IF_DEBUG("qtaguid: %s(%s): "
 			 "enable tracking. rfcnt=%d\n", __func__,
 			 entry->ifname,
-			 percpu_read(*net_dev->pcpu_refcnt));
+			 0); //percpu_read(*net_dev->pcpu_refcnt));
 	} else {
 		entry->active = false;
 		entry->net_dev = NULL;
 		IF_DEBUG("qtaguid: %s(%s): "
 			 "disable tracking. rfcnt=%d\n", __func__,
 			 entry->ifname,
-			 percpu_read(*net_dev->pcpu_refcnt));
+			 0); //percpu_read(*net_dev->pcpu_refcnt));
 
 	}
 }
