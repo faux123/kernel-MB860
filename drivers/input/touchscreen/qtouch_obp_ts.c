@@ -1336,6 +1336,7 @@ static int do_touch_multi_msg(struct qtouch_ts_data *ts, struct qtm_object *obj,
 							 ts->finger_data[i].x_data);
 					input_report_abs(ts->input_dev, ABS_MT_POSITION_Y,
 							 ts->finger_data[i].y_data);
+					input_report_key(ts->input_dev, BTN_TOUCH, ts->finger_data[i].z_data ? 1 : 0 );
 					input_mt_sync(ts->input_dev);
 				}
 			}
@@ -1394,6 +1395,7 @@ static int do_touch_multi_msg(struct qtouch_ts_data *ts, struct qtm_object *obj,
 							 ts->prev_finger_data[i].x_data);
 					input_report_abs(ts->input_dev, ABS_MT_POSITION_Y,
 							 ts->prev_finger_data[i].y_data);
+					input_report_key(ts->input_dev, BTN_TOUCH, 0 );
 					input_mt_sync(ts->input_dev);
 				}
 			}
@@ -1446,6 +1448,7 @@ static int do_touch_multi_msg(struct qtouch_ts_data *ts, struct qtm_object *obj,
 					 ts->finger_data[1].x_data);
 			input_report_abs(ts->input_dev, ABS_MT_POSITION_Y,
 					 ts->finger_data[1].y_data);
+			input_report_key(ts->input_dev, BTN_TOUCH, 0 );
 			input_mt_sync(ts->input_dev);
 			ts->finger_data[1].x_data = 0;
 			ts->finger_data[1].y_data = 0;
@@ -2252,6 +2255,7 @@ static int qtouch_ts_probe(struct i2c_client *client,
 			input_set_abs_params(ts->input_dev, ABS_MT_WIDTH_MAJOR,
 				pdata->abs_min_w, pdata->abs_max_w,
 				pdata->fuzz_w, 0);
+			input_set_capability(ts->input_dev, EV_KEY, BTN_TOUCH);
 			set_bit(EV_ABS, ts->input_dev->evbit);
 			set_bit(EV_KEY, ts->input_dev->keybit);
 			set_bit(EV_SYN, ts->input_dev->keybit);
