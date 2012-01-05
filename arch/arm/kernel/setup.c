@@ -645,28 +645,31 @@ static int __init parse_tag_revision(const struct tag *tag)
 
 __tagtable(ATAG_REVISION, parse_tag_revision);
 
+#ifdef CONFIG_CMDLINE_PREPEND_ATRIX
+static char __initdata cmdline_buffer[COMMAND_LINE_SIZE] = "\0";
+#endif
+
 static int __init parse_tag_cmdline(const struct tag *tag)
 {
-#if defined(CONFIG_CMDLINE_PREPEND_ATRIX)
-    char cmdline_buffer[COMMAND_LINE_SIZE] = "\0";
-    char *tmp_cmdline = tag->u.cmdline.cmdline;
-    char *cmdline_tok = strsep(&tmp_cmdline," ");
-    const char excl1[] = "vmalloc=", excl2[] = "nvmem=", excl3[] = "mem=";
+#ifdef CONFIG_CMDLINE_PREPEND_ATRIX
+	char *tmp_cmdline = (char *) tag->u.cmdline.cmdline;
+	char *cmdline_tok = strsep(&tmp_cmdline," ");
+	const char excl1[] = "vmalloc=", excl2[] = "nvmem=", excl3[] = "mem=";
 
-    while (cmdline_tok = strsep(&tmp_cmdline," "))
-    {   /* only copy if not a mem related part of cmdline */
-        if ((0 != strncmp(cmdline_tok, excl1, sizeof(&excl1))) &&
-            (0 != strncmp(cmdline_tok, excl2, sizeof(&excl2))) &&
-            (0 != strncmp(cmdline_tok, excl3, sizeof(&excl3))))
-        {
-            strlcat(cmdline_buffer,cmdline_tok,COMMAND_LINE_SIZE);
-            strlcat(cmdline_buffer," ",COMMAND_LINE_SIZE);
-        }
-    }
+	while ((cmdline_tok = strsep(&tmp_cmdline," ")) != NULL)
+	{   /* only copy if not a mem related part of cmdline */
+		if ((0 != strncmp(cmdline_tok, excl1, sizeof(&excl1))) &&
+		    (0 != strncmp(cmdline_tok, excl2, sizeof(&excl2))) &&
+		    (0 != strncmp(cmdline_tok, excl3, sizeof(&excl3))))
+		{
+			strlcat(cmdline_buffer,cmdline_tok,COMMAND_LINE_SIZE);
+			strlcat(cmdline_buffer," ",COMMAND_LINE_SIZE);
+		}
+	}
 
-    /* add prepend from .config */
-    strlcat(default_command_line, " ", COMMAND_LINE_SIZE);
-    strlcat(default_command_line, cmdline_buffer, COMMAND_LINE_SIZE);
+	/* add prepend from .config */
+	strlcat(default_command_line, " ", COMMAND_LINE_SIZE);
+	strlcat(default_command_line, cmdline_buffer, COMMAND_LINE_SIZE);
 #else
 	strlcpy(default_command_line, tag->u.cmdline.cmdline, COMMAND_LINE_SIZE);
 #endif
