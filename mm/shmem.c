@@ -2695,5 +2695,6 @@ int shmem_zero_setup(struct vm_area_struct *vma)
 	if (IS_ERR(file))
 		return PTR_ERR(file);
 	shmem_set_file(vma, file);
+	vma->vm_flags |= VM_CAN_NONLINEAR;
 	return 0;
 }

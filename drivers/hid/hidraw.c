@@ -109,11 +109,11 @@ static ssize_t hidraw_write(struct file *file, const char __user *buffer, size_t
 	__u8 *buf;
 	int ret = 0;
 
-	mutex_lock(&minors_lock);
-	if (hidraw_table[minor] == NULL) {
-		ret = -ENODEV;
-		goto out;
-	}
+	if (!hidraw_table[minor])
+		return -ENODEV;
+
+	dev = hidraw_table[minor]->hid;
+
 	dev = hidraw_table[minor]->hid;
 
 	if (!dev->hid_output_raw_report) {
@@ -219,11 +219,14 @@ static int hidraw_release(struct inode * inode, struct file * file)
 	unsigned int minor = iminor(inode);
 	struct hidraw *dev;
 	struct hidraw_list *list = file->private_data;
+	int ret;
 
+	mutex_lock(&minors_lock);
 	if (!hidraw_table[minor]) {
 		printk(KERN_EMERG "hidraw device with minor %d doesn't exist\n",
 				minor);
-		return -ENODEV;
+		ret = -ENODEV;
+		goto unlock;
 	}
 
 	list_del(&list->node);
@@ -237,10 +240,12 @@ static int hidraw_release(struct inode * inode, struct file * file)
 			kfree(list->hidraw);
 		}
 	}
-
 	kfree(list);
+	ret = 0;
+unlock:
+	mutex_unlock(&minors_lock);
 
-	return 0;
+	return ret;
 }
 
 static long hidraw_ioctl(struct file *file, unsigned int cmd,
