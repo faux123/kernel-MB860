@@ -218,7 +218,6 @@ static inline void irq_pm_syscore_resume(void) { };
 static inline void suspend_device_irqs(void) { };
 static inline void resume_device_irqs(void) { };
 static inline int check_wakeup_irqs(void) { return 0; }
-static inline void irq_pm_syscore_resume(void) { };
 #endif
 
 #if defined(CONFIG_SMP) && defined(CONFIG_GENERIC_HARDIRQS)
