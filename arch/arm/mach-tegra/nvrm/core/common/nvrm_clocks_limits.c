@@ -263,9 +263,9 @@ NvRmPrivClockLimitsInit(NvRmDeviceHandle hRmDevice)
     NvRmPrivChipFlavorInit(hRmDevice);
     pShmoo = s_ChipFlavor.pSocShmoo;
     pHwLimits = &pShmoo->ScaledLimitsList[0];
-#ifndef CONFIG_FAKE_SHMOO
-    pSKUedLimits = pShmoo->pSKUedLimits;
-#else
+    pSKUedLimits = (NvRmSKUedLimits*) pShmoo->pSKUedLimits;
+
+#ifdef CONFIG_FAKE_SHMOO
 /*
     NvRmFreqKHz CpuMaxKHz;
     NvRmFreqKHz AvpMaxKHz;
@@ -278,7 +278,6 @@ NvRmPrivClockLimitsInit(NvRmDeviceHandle hRmDevice)
     NvRmMilliVolts NominalCoreMv;   // for common core rail
     NvRmMilliVolts NominalCpuMv;    // for dedicated CPU rail
 */
-    pSKUedLimits = pShmoo->pSKUedLimits;
     // override default with configuration values
     // CPU clock duh!
     pSKUedLimits->CpuMaxKHz = MAX_CPU_OC_FREQ;
