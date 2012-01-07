@@ -109,11 +109,11 @@ static ssize_t hidraw_write(struct file *file, const char __user *buffer, size_t
 	__u8 *buf;
 	int ret = 0;
 
-	if (!hidraw_table[minor])
-		return -ENODEV;
-
-	dev = hidraw_table[minor]->hid;
-
+	mutex_lock(&minors_lock);
+	if (hidraw_table[minor] == NULL) {
+		ret = -ENODEV;
+		goto out;
+	}
 	dev = hidraw_table[minor]->hid;
 
 	if (!dev->hid_output_raw_report) {

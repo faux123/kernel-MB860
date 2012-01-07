@@ -408,7 +408,7 @@ int block_fsync(struct file *filp, struct dentry *dentry, int datasync)
 {
 	return sync_blockdev(I_BDEV(filp->f_mapping->host));
 }
-EXPORT_SYMBOL(blkdev_fsync);
+EXPORT_SYMBOL(block_fsync);
 
 /*
  * pseudo-fs
@@ -424,7 +424,6 @@ static struct inode *bdev_alloc_inode(struct super_block *sb)
 		return NULL;
 	return &ei->vfs_inode;
 }
-EXPORT_SYMBOL(block_fsync);
 
 static void bdev_destroy_inode(struct inode *inode)
 {
@@ -1475,7 +1474,7 @@ const struct file_operations def_blk_fops = {
   	.aio_read	= generic_file_aio_read,
 	.aio_write	= blkdev_aio_write,
 	.mmap		= generic_file_mmap,
-	.fsync		= blkdev_fsync,
+	.fsync		= block_fsync,
 	.unlocked_ioctl	= block_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= compat_blkdev_ioctl,
