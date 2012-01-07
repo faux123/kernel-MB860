@@ -206,8 +206,10 @@ extern void suspend_device_irqs(void);
 extern void resume_device_irqs(void);
 #ifdef CONFIG_PM_SLEEP
 extern int check_wakeup_irqs(void);
+extern void irq_pm_syscore_resume(void);
 #else
 static inline int check_wakeup_irqs(void) { return 0; }
+static inline void irq_pm_syscore_resume(void) { };
 #endif
 #else
 static inline void suspend_device_irqs(void) { };
