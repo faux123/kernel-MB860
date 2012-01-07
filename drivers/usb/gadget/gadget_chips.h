@@ -169,6 +169,12 @@
 #define gadget_is_ci13xxx(g)	0
 #endif
 
+#ifdef CONFIG_USB_GADGET_TEGRA
+#define gadget_is_tegra(g)	(!strcmp("tegra-udc", (g)->name))
+#else
+#define gadget_is_tegra(g)	0
+#endif
+
 // CONFIG_USB_GADGET_SX2
 // CONFIG_USB_GADGET_AU1X00
 // ...
@@ -247,6 +253,8 @@ static inline int usb_gadget_controller_number(struct usb_gadget *gadget)
 		return 0x24;
 	else if (gadget_is_r8a66597(gadget))
 		return 0x25;
+	else if (gadget_is_tegra(gadget))
+		return 0x26;
 	return -ENOENT;
 }
 

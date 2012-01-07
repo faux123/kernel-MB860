@@ -438,7 +438,9 @@ do_cache_op(unsigned long start, unsigned long end, int flags)
 		if (end > vma->vm_end)
 			end = vma->vm_end;
 
-		flush_cache_user_range(vma, start, end);
+		up_read(&mm->mmap_sem);
+		flush_cache_user_range(start, end);
+		return;
 	}
 	up_read(&mm->mmap_sem);
 }
@@ -504,7 +506,13 @@ asmlinkage int arm_syscall(int no, struct pt_regs *regs)
 	case NR(set_tls):
 		thread->tp_value = regs->ARM_r0;
 #if defined(CONFIG_HAS_TLS_REG)
+#if defined(CONFIG_TEGRA_ERRATA_657451)
+		BUG_ON(regs->ARM_r0 & 0x1);
+		asm ("mcr p15, 0, %0, c13, c0, 3" : :
+			"r" ((regs->ARM_r0) | ((regs->ARM_r0>>20) & 0x1)));
+#else
 		asm ("mcr p15, 0, %0, c13, c0, 3" : : "r" (regs->ARM_r0) );
+#endif
 #elif !defined(CONFIG_TLS_REG_EMUL)
 		/*
 		 * User space must never try to access this directly.
@@ -675,13 +683,9 @@ baddataabort(int code, unsigned long instr, struct pt_regs *regs)
 	arm_notify_die("unknown data abort code", regs, &info, instr, 0);
 }
 
-void __attribute__((noreturn)) __bug(const char *file, int line)
+void __bug(const char *file, int line)
 {
 	printk(KERN_CRIT"kernel BUG at %s:%d!\n", file, line);
-	*(int *)0 = 0;
-
-	/* Avoid "noreturn function does return" */
-	for (;;);
 }
 EXPORT_SYMBOL(__bug);
 

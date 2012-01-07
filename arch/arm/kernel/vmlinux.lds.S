@@ -117,6 +117,7 @@ SECTIONS
 			*(.rodata.*)
 			*(.glue_7)
 			*(.glue_7t)
+		. = ALIGN(4);
 		*(.got)			/* Global offset table		*/
 	}
 

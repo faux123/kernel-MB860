@@ -16,6 +16,7 @@ struct mmc_cid {
 	unsigned int		manfid;
 	char			prod_name[8];
 	unsigned int		serial;
+	unsigned char		cbx:2;
 	unsigned short		oemid;
 	unsigned short		year;
 	unsigned char		hwrev;
@@ -24,12 +25,14 @@ struct mmc_cid {
 };
 
 struct mmc_csd {
+	unsigned char		structure;
 	unsigned char		mmca_vsn;
 	unsigned short		cmdclass;
 	unsigned short		tacc_clks;
 	unsigned int		tacc_ns;
 	unsigned int		r2w_factor;
 	unsigned int		max_dtr;
+	unsigned int		erase_size;
 	unsigned int		read_blkbits;
 	unsigned int		write_blkbits;
 	unsigned int		capacity;
@@ -41,6 +44,9 @@ struct mmc_csd {
 
 struct mmc_ext_csd {
 	u8			rev;
+	u8			rel_wr_sec_c;
+	u8			power_class[4];
+#define MMC_EXT_CSD_PWR_CL(b)	(b - EXT_CSD_PWR_CL_52_195)
 	unsigned int		sa_timeout;		/* Units: 100ns */
 	unsigned int		hs_max_dtr;
 	unsigned int		sectors;
@@ -123,6 +129,7 @@ struct mmc_card {
 #define mmc_card_mmc(c)		((c)->type == MMC_TYPE_MMC)
 #define mmc_card_sd(c)		((c)->type == MMC_TYPE_SD)
 #define mmc_card_sdio(c)	((c)->type == MMC_TYPE_SDIO)
+#define mmc_card_has_boot(c)	((c)->cid.cbx != 0)
 
 #define mmc_card_present(c)	((c)->state & MMC_STATE_PRESENT)
 #define mmc_card_readonly(c)	((c)->state & MMC_STATE_READONLY)

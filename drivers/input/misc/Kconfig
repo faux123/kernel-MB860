@@ -132,6 +132,17 @@ config INPUT_ATI_REMOTE2
 	  To compile this driver as a module, choose M here: the module will be
 	  called ati_remote2.
 
+config INPUT_KEYCHORD
+	tristate "Key chord input driver support"
+	help
+	  Say Y here if you want to enable the key chord driver
+	  accessible at /dev/keychord.  This driver can be used
+	  for receiving notifications when client specified key
+	  combinations are pressed.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called keychord.
+
 config INPUT_KEYSPAN_REMOTE
 	tristate "Keyspan DMR USB remote control (EXPERIMENTAL)"
 	depends on EXPERIMENTAL
@@ -240,6 +251,11 @@ config INPUT_WINBOND_CIR
 	  To compile this driver as a module, choose M here: the module will be
 	  called winbond_cir.
 
+config INPUT_GPIO
+	tristate "GPIO driver support"
+	help
+	  Say Y here if you want to support gpio based keys, wheels etc...
+
 config HP_SDC_RTC
 	tristate "HP SDC Real Time Clock"
 	depends on (GSC || HP300) && SERIO
@@ -317,4 +333,35 @@ config INPUT_PCAP
 	  To compile this driver as a module, choose M here: the
 	  module will be called pcap_keys.
 
+config INPUT_TEGRA_ODM_ACCEL
+	boolean "Accelerometer for NVIDIA Tegra ODM kit"
+	depends on ARCH_TEGRA && TEGRA_ODM_KIT
+	help
+	  Say Y here if you want to enable an accelerometer input device node
+	  using the NVIDIA Tegra ODM kit accelerometer adaptation interface
+
+config INPUT_TEGRA_ODM_SCROLL
+	tristate "Scrollwheel for NVIDIA Tegra ODM kit"
+	depends on ARCH_TEGRA && TEGRA_ODM_KIT
+	help
+	  Say Y here if you want to enable a scrollwheel input device node
+	  using the NVIDIA Tegra ODM kit scrollwheel adaptation interface
+
 endif
+
+config INPUT_ALS_IR_ISL29030
+	tristate "ISL29030 ALS & IR Sensor"
+	default y
+	help
+	  Say Y here if you wish to include support for the ISL29030 ALS
+	  and IR sensor.
+
+	  If unsure, say N.
+
+config INPUT_HALLEFFECT_BU52014HV
+	tristate "BU52014HV Hall Effect Sensor"
+	help
+		Say Y here if you wish to include support for the BU52014HV hall
+		effect sensor.
+
+		If unsure, say N.

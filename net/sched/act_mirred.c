@@ -195,7 +195,7 @@ bad_mirred:
 		skb2->tc_verd = SET_TC_FROM(skb2->tc_verd, at);
 
 	skb2->dev = dev;
-	skb2->iif = skb->dev->ifindex;
+	skb2->skb_iif = skb->dev->ifindex;
 	dev_queue_xmit(skb2);
 	spin_unlock(&m->tcf_lock);
 	return m->tcf_action;

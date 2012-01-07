@@ -22,9 +22,10 @@
 #include <net/inet6_hashtables.h>
 #include <net/ip.h>
 
-void __inet6_hash(struct sock *sk)
+int __inet6_hash(struct sock *sk, struct inet_timewait_sock *tw)
 {
 	struct inet_hashinfo *hashinfo = sk->sk_prot->h.hashinfo;
+	int twrefcnt = 0;
 
 	WARN_ON(!sk_unhashed(sk));
 
@@ -45,10 +46,15 @@ void __inet6_hash(struct sock *sk)
 		lock = inet_ehash_lockp(hashinfo, hash);
 		spin_lock(lock);
 		__sk_nulls_add_node_rcu(sk, list);
+		if (tw) {
+			WARN_ON(sk->sk_hash != tw->tw_hash);
+			twrefcnt = inet_twsk_unhash(tw);
+		}
 		spin_unlock(lock);
 	}
 
 	sock_prot_inuse_add(sock_net(sk), sk->sk_prot, 1);
+	return twrefcnt;
 }
 EXPORT_SYMBOL(__inet6_hash);
 
@@ -223,6 +229,7 @@ static int __inet6_check_established(struct inet_timewait_death_row *death_row,
 	struct sock *sk2;
 	const struct hlist_nulls_node *node;
 	struct inet_timewait_sock *tw;
+	int twrefcnt = 0;
 
 	spin_lock(lock);
 
@@ -250,19 +257,23 @@ unique:
 	 * in hash table socket with a funny identity. */
 	inet->num = lport;
 	inet->sport = htons(lport);
+	sk->sk_hash = hash;
 	WARN_ON(!sk_unhashed(sk));
 	__sk_nulls_add_node_rcu(sk, &head->chain);
-	sk->sk_hash = hash;
+	if (tw) {
+		twrefcnt = inet_twsk_unhash(tw);
+		NET_INC_STATS_BH(net, LINUX_MIB_TIMEWAITRECYCLED);
+	}
 	spin_unlock(lock);
+	if (twrefcnt)
+		inet_twsk_put(tw);
 	sock_prot_inuse_add(sock_net(sk), sk->sk_prot, 1);
 
-	if (twp != NULL) {
+	if (twp) {
 		*twp = tw;
-		NET_INC_STATS_BH(net, LINUX_MIB_TIMEWAITRECYCLED);
-	} else if (tw != NULL) {
+	} else if (tw) {
 		/* Silly. Should hash-dance instead... */
 		inet_twsk_deschedule(tw, death_row);
-		NET_INC_STATS_BH(net, LINUX_MIB_TIMEWAITRECYCLED);
 
 		inet_twsk_put(tw);
 	}

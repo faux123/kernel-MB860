@@ -570,7 +570,8 @@ static inline int __sock_sendmsg(struct kiocb *iocb, struct socket *sock,
 	if (err)
 		return err;
 
-	return sock->ops->sendmsg(iocb, sock, msg, size);
+	err = sock->ops->sendmsg(iocb, sock, msg, size);
+	return err;
 }
 
 int sock_sendmsg(struct socket *sock, struct msghdr *msg, size_t size)
@@ -668,6 +669,21 @@ void __sock_recv_timestamp(struct msghdr *msg, struct sock *sk,
 
 EXPORT_SYMBOL_GPL(__sock_recv_timestamp);
 
+inline void sock_recv_drops(struct msghdr *msg, struct sock *sk, struct sk_buff *skb)
+{
+	if (sock_flag(sk, SOCK_RXQ_OVFL) && skb && skb->dropcount)
+		put_cmsg(msg, SOL_SOCKET, SO_RXQ_OVFL,
+			sizeof(__u32), &skb->dropcount);
+}
+
+void sock_recv_ts_and_drops(struct msghdr *msg, struct sock *sk,
+	struct sk_buff *skb)
+{
+	sock_recv_timestamp(msg, sk, skb);
+	sock_recv_drops(msg, sk, skb);
+}
+EXPORT_SYMBOL_GPL(sock_recv_ts_and_drops);
+
 static inline int __sock_recvmsg(struct kiocb *iocb, struct socket *sock,
 				 struct msghdr *msg, size_t size, int flags)
 {
@@ -684,7 +700,8 @@ static inline int __sock_recvmsg(struct kiocb *iocb, struct socket *sock,
 	if (err)
 		return err;
 
-	return sock->ops->recvmsg(iocb, sock, msg, size, flags);
+	err = sock->ops->recvmsg(iocb, sock, msg, size, flags);
+	return err;
 }
 
 int sock_recvmsg(struct socket *sock, struct msghdr *msg,
@@ -1100,11 +1117,14 @@ static int sock_fasync(int fd, struct file *filp, int on)
 		fna->fa_next = sock->fasync_list;
 		write_lock_bh(&sk->sk_callback_lock);
 		sock->fasync_list = fna;
+		sock_set_flag(sk, SOCK_FASYNC);
 		write_unlock_bh(&sk->sk_callback_lock);
 	} else {
 		if (fa != NULL) {
 			write_lock_bh(&sk->sk_callback_lock);
 			*prev = fa->fa_next;
+			if (!sock->fasync_list)
+				sock_reset_flag(sk, SOCK_FASYNC);
 			write_unlock_bh(&sk->sk_callback_lock);
 			kfree(fa);
 		}

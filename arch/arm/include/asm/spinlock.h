@@ -5,6 +5,22 @@
 #error SMP not supported on pre-ARMv6 CPUs
 #endif
 
+static inline void dsb_sev(void)
+{
+#if __LINUX_ARM_ARCH__ >= 7
+	__asm__ __volatile__ (
+		"dsb\n"
+		"sev"
+	);
+#elif defined(CONFIG_CPU_32v6K)
+	__asm__ __volatile__ (
+		"mcr p15, 0, %0, c7, c10, 4\n"
+		"sev"
+		: : "r" (0)
+	);
+#endif
+}
+
 /*
  * ARMv6 Spin-locking.
  *
@@ -35,6 +51,9 @@ static inline void __raw_spin_lock(raw_spinlock_t *lock)
 #endif
 "	strexeq	%0, %2, [%1]\n"
 "	teqeq	%0, #0\n"
+#if __LINUX_ARM_ARCH__ >= 7
+"	dmb\n"
+#endif
 "	bne	1b"
 	: "=&r" (tmp)
 	: "r" (&lock->lock), "r" (1)
@@ -69,13 +88,11 @@ static inline void __raw_spin_unlock(raw_spinlock_t *lock)
 
 	__asm__ __volatile__(
 "	str	%1, [%0]\n"
-#ifdef CONFIG_CPU_32v6K
-"	mcr	p15, 0, %1, c7, c10, 4\n" /* DSB */
-"	sev"
-#endif
 	:
 	: "r" (&lock->lock), "r" (0)
 	: "cc");
+
+	dsb_sev();
 }
 
 /*
@@ -98,6 +115,9 @@ static inline void __raw_write_lock(raw_rwlock_t *rw)
 #endif
 "	strexeq	%0, %2, [%1]\n"
 "	teq	%0, #0\n"
+#if __LINUX_ARM_ARCH__ >= 7
+"	dmb\n"
+#endif
 "	bne	1b"
 	: "=&r" (tmp)
 	: "r" (&rw->lock), "r" (0x80000000)
@@ -132,13 +152,11 @@ static inline void __raw_write_unlock(raw_rwlock_t *rw)
 
 	__asm__ __volatile__(
 	"str	%1, [%0]\n"
-#ifdef CONFIG_CPU_32v6K
-"	mcr	p15, 0, %1, c7, c10, 4\n" /* DSB */
-"	sev\n"
-#endif
 	:
 	: "r" (&rw->lock), "r" (0)
 	: "cc");
+
+	dsb_sev();
 }
 
 /* write_can_lock - would write_trylock() succeed? */
@@ -168,6 +186,9 @@ static inline void __raw_read_lock(raw_rwlock_t *rw)
 "	wfemi\n"
 #endif
 "	rsbpls	%0, %1, #0\n"
+#if __LINUX_ARM_ARCH__ >= 7
+"	dmb\n"
+#endif
 "	bmi	1b"
 	: "=&r" (tmp), "=&r" (tmp2)
 	: "r" (&rw->lock)
@@ -188,14 +209,12 @@ static inline void __raw_read_unlock(raw_rwlock_t *rw)
 "	strex	%1, %0, [%2]\n"
 "	teq	%1, #0\n"
 "	bne	1b"
-#ifdef CONFIG_CPU_32v6K
-"\n	cmp	%0, #0\n"
-"	mcreq   p15, 0, %0, c7, c10, 4\n"
-"	seveq"
-#endif
 	: "=&r" (tmp), "=&r" (tmp2)
 	: "r" (&rw->lock)
 	: "cc");
+
+	if (tmp == 0)
+		dsb_sev();
 }
 
 static inline int __raw_read_trylock(raw_rwlock_t *rw)

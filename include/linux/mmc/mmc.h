@@ -202,6 +202,7 @@ struct _mmc_csd {
  * OCR bits are mostly in host.h
  */
 #define MMC_CARD_BUSY	0x80000000	/* Card Power up status bit */
+#define MMC_CARD_ACCESS_MODE	0x40000000	/* Card Access Mode bit */
 
 /*
  * Card Command Classes (CCC)
@@ -253,11 +254,18 @@ struct _mmc_csd {
 
 #define EXT_CSD_BUS_WIDTH	183	/* R/W */
 #define EXT_CSD_HS_TIMING	185	/* R/W */
+#define EXT_CSD_POWER_CLASS	187	/* R/W */
 #define EXT_CSD_CARD_TYPE	196	/* RO */
+#define EXT_CSD_STRUCTURE	194	/* RO */
 #define EXT_CSD_REV		192	/* RO */
+#define EXT_CSD_PWR_CL_52_195	200	/* RO */
+#define EXT_CSD_PWR_CL_26_195	201	/* RO */
+#define EXT_CSD_PWR_CL_52_360	202	/* RO */
+#define EXT_CSD_PWR_CL_26_360	203	/* RO */
 #define EXT_CSD_SEC_CNT		212	/* RO, 4 bytes */
 #define EXT_CSD_S_A_TIMEOUT	217
-
+#define EXT_CSD_REL_WR_SEC_C    222	/* RO */
+#define EXT_CSD_BOOT_SIZE_MULTI 226
 /*
  * EXT_CSD field definitions
  */
@@ -268,6 +276,7 @@ struct _mmc_csd {
 
 #define EXT_CSD_CARD_TYPE_26	(1<<0)	/* Card can run at 26MHz */
 #define EXT_CSD_CARD_TYPE_52	(1<<1)	/* Card can run at 52MHz */
+#define EXT_CSD_CARD_TYPE_MASK	0x3	/* Mask out reserved and DDR bits */
 
 #define EXT_CSD_BUS_WIDTH_1	0	/* Card is in 1 bit mode */
 #define EXT_CSD_BUS_WIDTH_4	1	/* Card is in 4 bit mode */
@@ -281,6 +290,14 @@ struct _mmc_csd {
 #define MMC_SWITCH_MODE_SET_BITS	0x01	/* Set bits which are 1 in value */
 #define MMC_SWITCH_MODE_CLEAR_BITS	0x02	/* Clear bits which are 1 in value */
 #define MMC_SWITCH_MODE_WRITE_BYTE	0x03	/* Set target to value */
+
+/*
+ * MMC_ERASE argument definitions
+ */
+
+#define MMC_ERASE_TYPE_TRIM		(1<<0)	/* Identify write blocks */
+#define MMC_ERASE_TYPE_GARBAGE_COLLECT	(1<<15)	/* Force garbage collect */
+#define MMC_ERASE_TYPE_SECURE		(1<<31)	/* Secure request */
 
 #endif  /* MMC_MMC_PROTOCOL_H */
 

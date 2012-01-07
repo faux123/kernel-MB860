@@ -14,6 +14,7 @@
 #include <linux/bootmem.h>
 #include <linux/mman.h>
 #include <linux/nodemask.h>
+#include <linux/fs.h>
 
 #include <asm/cputype.h>
 #include <asm/mach-types.h>
@@ -246,6 +247,9 @@ static struct mem_type mem_types[] = {
 		.domain    = DOMAIN_USER,
 	},
 	[MT_MEMORY] = {
+		.prot_pte  = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY |
+				L_PTE_USER | L_PTE_EXEC,
+		.prot_l1   = PMD_TYPE_TABLE,
 		.prot_sect = PMD_TYPE_SECT | PMD_SECT_AP_WRITE,
 		.domain    = DOMAIN_KERNEL,
 	},
@@ -254,6 +258,9 @@ static struct mem_type mem_types[] = {
 		.domain    = DOMAIN_KERNEL,
 	},
 	[MT_MEMORY_NONCACHED] = {
+		.prot_pte  = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY |
+				L_PTE_USER | L_PTE_EXEC | L_PTE_MT_BUFFERABLE,
+		.prot_l1   = PMD_TYPE_TABLE,
 		.prot_sect = PMD_TYPE_SECT | PMD_SECT_AP_WRITE,
 		.domain    = DOMAIN_KERNEL,
 	},
@@ -398,9 +405,12 @@ static void __init build_mem_type_table(void)
 	 * Enable CPU-specific coherency if supported.
 	 * (Only available on XSC3 at the moment.)
 	 */
-	if (arch_is_coherent() && cpu_is_xsc3())
+	if (arch_is_coherent() && cpu_is_xsc3()) {
 		mem_types[MT_MEMORY].prot_sect |= PMD_SECT_S;
-
+		mem_types[MT_MEMORY].prot_pte |= L_PTE_SHARED;
+		mem_types[MT_MEMORY_NONCACHED].prot_sect |= PMD_SECT_S;
+		mem_types[MT_MEMORY_NONCACHED].prot_pte |= L_PTE_SHARED;
+	}
 	/*
 	 * ARMv6 and above have extended page tables.
 	 */
@@ -420,8 +430,14 @@ static void __init build_mem_type_table(void)
 		user_pgprot |= L_PTE_SHARED;
 		kern_pgprot |= L_PTE_SHARED;
 		vecs_pgprot |= L_PTE_SHARED;
+		mem_types[MT_DEVICE_WC].prot_sect |= PMD_SECT_S;
+		mem_types[MT_DEVICE_WC].prot_pte |= L_PTE_SHARED;
+		mem_types[MT_DEVICE_CACHED].prot_sect |= PMD_SECT_S;
+		mem_types[MT_DEVICE_CACHED].prot_pte |= L_PTE_SHARED;
 		mem_types[MT_MEMORY].prot_sect |= PMD_SECT_S;
+		mem_types[MT_MEMORY].prot_pte |= L_PTE_SHARED;
 		mem_types[MT_MEMORY_NONCACHED].prot_sect |= PMD_SECT_S;
+		mem_types[MT_MEMORY_NONCACHED].prot_pte |= L_PTE_SHARED;
 #endif
 	}
 
@@ -453,12 +469,13 @@ static void __init build_mem_type_table(void)
 
 	pgprot_user   = __pgprot(L_PTE_PRESENT | L_PTE_YOUNG | user_pgprot);
 	pgprot_kernel = __pgprot(L_PTE_PRESENT | L_PTE_YOUNG |
-				 L_PTE_DIRTY | L_PTE_WRITE |
-				 L_PTE_EXEC | kern_pgprot);
+				 L_PTE_DIRTY | L_PTE_WRITE | kern_pgprot);
 
 	mem_types[MT_LOW_VECTORS].prot_l1 |= ecc_mask;
 	mem_types[MT_HIGH_VECTORS].prot_l1 |= ecc_mask;
 	mem_types[MT_MEMORY].prot_sect |= ecc_mask | cp->pmd;
+	mem_types[MT_MEMORY].prot_pte |= kern_pgprot;
+	mem_types[MT_MEMORY_NONCACHED].prot_sect |= ecc_mask;
 	mem_types[MT_ROM].prot_sect |= cp->pmd;
 
 	switch (cp->pmd) {
@@ -481,6 +498,19 @@ static void __init build_mem_type_table(void)
 			t->prot_sect |= PMD_DOMAIN(t->domain);
 	}
 }
+
+#ifdef CONFIG_ARM_DMA_MEM_BUFFERABLE
+pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
+			      unsigned long size, pgprot_t vma_prot)
+{
+	if (!pfn_valid(pfn))
+		return pgprot_noncached(vma_prot);
+	else if (file->f_flags & O_SYNC)
+		return pgprot_writecombine(vma_prot);
+	return vma_prot;
+}
+EXPORT_SYMBOL(phys_mem_access_prot);
+#endif
 
 #define vectors_base()	(vectors_high() ? 0xffff0000 : 0)
 
@@ -1036,7 +1066,7 @@ void __init paging_init(struct machine_desc *mdesc)
 	 */
 	zero_page = alloc_bootmem_low_pages(PAGE_SIZE);
 	empty_zero_page = virt_to_page(zero_page);
-	flush_dcache_page(empty_zero_page);
+	__flush_dcache_page(NULL, empty_zero_page);
 }
 
 /*
@@ -1050,10 +1080,12 @@ void setup_mm_for_reboot(char mode)
 	pgd_t *pgd;
 	int i;
 
-	if (current->mm && current->mm->pgd)
-		pgd = current->mm->pgd;
-	else
-		pgd = init_mm.pgd;
+	/*
+	 * We need to access to user-mode page tables here. For kernel threads
+	 * we don't have any user-mode mappings so we use the context that we
+	 * "borrowed".
+	 */
+	pgd = current->active_mm->pgd;
 
 	base_pmdval = PMD_SECT_AP_WRITE | PMD_SECT_AP_READ | PMD_TYPE_SECT;
 	if (cpu_architecture() <= CPU_ARCH_ARMv5TEJ && !cpu_is_xscale())
@@ -1068,4 +1100,6 @@ void setup_mm_for_reboot(char mode)
 		pmd[1] = __pmd(pmdval + (1 << (PGDIR_SHIFT - 1)));
 		flush_pmd_entry(pmd);
 	}
+
+	local_flush_tlb_all();
 }

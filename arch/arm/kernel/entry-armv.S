@@ -88,6 +88,13 @@ __dabt_invalid:
 	b	common_invalid
 ENDPROC(__dabt_invalid)
 
+#ifdef CONFIG_NON_NESTED_FIQ
+__fiq_invalid:
+	inv_entry BAD_FIQ
+	b	common_invalid
+ENDPROC(__fiq_invalid)
+#endif
+
 __irq_invalid:
 	inv_entry BAD_IRQ
 	b	common_invalid
@@ -214,6 +221,18 @@ __dabt_svc:
  UNWIND(.fnend		)
 ENDPROC(__dabt_svc)
 
+#ifdef CONFIG_NON_NESTED_FIQ
+	.align	5
+__fiq_svc:
+	disable_irq
+	svc_entry
+	mov 	r0, sp
+	bl 	asm_do_FIQ
+	ldr     r0, [sp, #S_PSR]                @ irqs are already disabled
+	msr     spsr_cxsf, r0
+	ldmia   sp, {r0 - pc}^                  @ load r0 - pc, cpsr
+ENDPROC(__fiq_svc)
+#endif
 	.align	5
 __irq_svc:
 	svc_entry
@@ -445,6 +464,20 @@ __dabt_usr:
 ENDPROC(__dabt_usr)
 
 	.align	5
+#ifdef CONFIG_NON_NESTED_FIQ
+__fiq_usr:
+	disable_irq
+	usr_entry
+	kuser_cmpxchg_check
+	mov 	r0, sp
+	bl 	asm_do_FIQ
+	get_thread_info tsk
+	mov 	why, #0
+	b   	ret_to_user
+ENDPROC(__fiq_usr)
+
+	.align	5
+#endif
 __irq_usr:
 	usr_entry
 	kuser_cmpxchg_check
@@ -740,6 +773,10 @@ ENTRY(__switch_to)
 	ldr	r6, [r2, #TI_CPU_DOMAIN]
 #endif
 #if defined(CONFIG_HAS_TLS_REG)
+#if defined(CONFIG_TEGRA_ERRATA_657451)
+	and	r4, r3, #(1<<20)
+	orr	r3, r3, r4, lsr #20
+#endif
 	mcr	p15, 0, r3, c13, c0, 3		@ set TLS register
 #elif !defined(CONFIG_TLS_REG_EMUL)
 	mov	r4, #0xffff0fff
@@ -909,7 +946,7 @@ __kuser_cmpxchg:				@ 0xffff0fc0
 	 * A special ghost syscall is used for that (see traps.c).
 	 */
 	stmfd	sp!, {r7, lr}
-	ldr	r7, =1f			@ it's 20 bits
+	ldr	r7, 1f			@ it's 20 bits
 	swi	__ARM_NR_cmpxchg
 	ldmfd	sp!, {r7, pc}
 1:	.word	__ARM_NR_cmpxchg
@@ -957,9 +994,7 @@ kuser_cmpxchg_fixup:
 
 #else
 
-#ifdef CONFIG_SMP
-	mcr	p15, 0, r0, c7, c10, 5	@ dmb
-#endif
+	smp_dmb
 1:	ldrex	r3, [r2]
 	subs	r3, r3, r0
 	strexeq	r3, r1, [r2]
@@ -1016,10 +1051,18 @@ __kuser_get_tls:				@ 0xffff0fe0
 	ldr	r0, [pc, #(16 - 8)]		@ TLS stored at 0xffff0ff0
 #else
 	mrc	p15, 0, r0, c13, c0, 3		@ read TLS register
+#if defined(CONFIG_TEGRA_ERRATA_657451)
+	bfi	r0, r0, #20, #1
+	bic	r0, r0, #1
+#endif
 #endif
 	usr_ret	lr
 
+#if defined(CONFIG_TEGRA_ERRATA_657451)
+	.rep	3
+#else
 	.rep	5
+#endif
 	.word	0			@ pad up to __kuser_helper_version
 	.endr
 
@@ -1120,6 +1163,26 @@ __stubs_start:
 	.long	__irq_invalid			@  e
 	.long	__irq_invalid			@  f
 
+#ifdef CONFIG_NON_NESTED_FIQ
+	vector_stub	fiq, FIQ_MODE, 4
+
+	.long	__fiq_usr			@  0  (USR_26 / USR_32)
+	.long	__fiq_invalid			@  1  (FIQ_26 / FIQ_32)
+	.long	__fiq_invalid			@  2  (IRQ_26 / IRQ_32)
+	.long	__fiq_svc			@  3  (SVC_26 / SVC_32)
+	.long	__fiq_invalid			@  4
+	.long	__fiq_invalid			@  5
+	.long	__fiq_invalid			@  6
+	.long	__fiq_invalid			@  7
+	.long	__fiq_invalid			@  8
+	.long	__fiq_invalid			@  9
+	.long	__fiq_invalid			@  a
+	.long	__fiq_invalid			@  b
+	.long	__fiq_invalid			@  c
+	.long	__fiq_invalid			@  d
+	.long	__fiq_invalid			@  e
+	.long	__fiq_invalid			@  f
+#endif
 /*
  * Data abort dispatcher
  * Enter in ABT mode, spsr = USR CPSR, lr = USR PC
@@ -1201,9 +1264,11 @@ __stubs_start:
  * other mode than FIQ...  Ok you can switch to another mode, but you can't
  * get out of that mode without clobbering one register.
  */
+#ifndef CONFIG_NON_NESTED_FIQ
 vector_fiq:
 	disable_fiq
 	subs	pc, lr, #4
+#endif
 
 /*=============================================================================
  * Address exception handler

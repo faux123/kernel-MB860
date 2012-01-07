@@ -897,12 +897,15 @@ int cpufreq_add_dev_interface(unsigned int cpu, struct cpufreq_policy *policy,
 		if (ret)
 			goto err_out_kobj_put;
 	}
+#ifndef CONFIG_MACH_MOT
 	if (cpufreq_driver->target) {
+#endif
 		ret = sysfs_create_file(&policy->kobj, &scaling_cur_freq.attr);
 		if (ret)
 			goto err_out_kobj_put;
+#ifndef CONFIG_MACH_MOT
 	}
-
+#endif
 	spin_lock_irqsave(&cpufreq_driver_lock, flags);
 	for_each_cpu(j, policy->cpus) {
 	if (!cpu_online(j))
@@ -1065,6 +1068,7 @@ err_out_unregister:
 
 err_unlock_policy:
 	unlock_policy_rwsem_write(cpu);
+	free_cpumask_var(policy->related_cpus);
 err_free_cpumask:
 	free_cpumask_var(policy->cpus);
 err_free_policy:
@@ -1089,6 +1093,8 @@ static int __cpufreq_remove_dev(struct sys_device *sys_dev)
 	unsigned int cpu = sys_dev->id;
 	unsigned long flags;
 	struct cpufreq_policy *data;
+	struct kobject *kobj;
+	struct completion *cmp;
 #ifdef CONFIG_SMP
 	struct sys_device *cpu_sys_dev;
 	unsigned int j;
@@ -1117,10 +1123,11 @@ static int __cpufreq_remove_dev(struct sys_device *sys_dev)
 		dprintk("removing link\n");
 		cpumask_clear_cpu(cpu, data->cpus);
 		spin_unlock_irqrestore(&cpufreq_driver_lock, flags);
-		sysfs_remove_link(&sys_dev->kobj, "cpufreq");
+		kobj = &sys_dev->kobj;
 		cpufreq_cpu_put(data);
 		cpufreq_debug_enable_ratelimit();
 		unlock_policy_rwsem_write(cpu);
+		sysfs_remove_link(kobj, "cpufreq");
 		return 0;
 	}
 #endif
@@ -1128,8 +1135,9 @@ static int __cpufreq_remove_dev(struct sys_device *sys_dev)
 #ifdef CONFIG_SMP
 
 #ifdef CONFIG_HOTPLUG_CPU
-	strncpy(per_cpu(cpufreq_cpu_governor, cpu), data->governor->name,
-			CPUFREQ_NAME_LEN);
+	if (data->governor)
+		strncpy(per_cpu(cpufreq_cpu_governor, cpu),
+			data->governor->name, CPUFREQ_NAME_LEN);
 #endif
 
 	/* if we have other CPUs still registered, we need to unlink them,
@@ -1153,11 +1161,15 @@ static int __cpufreq_remove_dev(struct sys_device *sys_dev)
 				continue;
 			dprintk("removing link for cpu %u\n", j);
 #ifdef CONFIG_HOTPLUG_CPU
-			strncpy(per_cpu(cpufreq_cpu_governor, j),
-				data->governor->name, CPUFREQ_NAME_LEN);
+			if (data->governor)
+				strncpy(per_cpu(cpufreq_cpu_governor, j),
+					data->governor->name, CPUFREQ_NAME_LEN);
 #endif
 			cpu_sys_dev = get_cpu_sysdev(j);
-			sysfs_remove_link(&cpu_sys_dev->kobj, "cpufreq");
+			kobj = &cpu_sys_dev->kobj;
+			unlock_policy_rwsem_write(cpu);
+			sysfs_remove_link(kobj, "cpufreq");
+			lock_policy_rwsem_write(cpu);
 			cpufreq_cpu_put(data);
 		}
 	}
@@ -1168,16 +1180,20 @@ static int __cpufreq_remove_dev(struct sys_device *sys_dev)
 	if (cpufreq_driver->target)
 		__cpufreq_governor(data, CPUFREQ_GOV_STOP);
 
-	kobject_put(&data->kobj);
+	kobj = &data->kobj;
+	cmp = &data->kobj_unregister;
+	unlock_policy_rwsem_write(cpu);
+	kobject_put(kobj);
 
 	/* we need to make sure that the underlying kobj is actually
 	 * not referenced anymore by anybody before we proceed with
 	 * unloading.
 	 */
 	dprintk("waiting for dropping of refcount\n");
-	wait_for_completion(&data->kobj_unregister);
+	wait_for_completion(cmp);
 	dprintk("wait complete\n");
 
+	lock_policy_rwsem_write(cpu);
 	if (cpufreq_driver->exit)
 		cpufreq_driver->exit(data);
 

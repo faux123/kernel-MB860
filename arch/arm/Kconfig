@@ -120,6 +120,14 @@ config RWSEM_GENERIC_SPINLOCK
 config RWSEM_XCHGADD_ALGORITHM
 	bool
 
+config ARCH_HAS_CPU_IDLE_WAIT
+	bool
+	default y
+
+config ARCH_HAS_DEFAULT_IDLE
+	bool
+	default y
+
 config ARCH_HAS_ILOG2_U32
 	bool
 
@@ -151,13 +159,28 @@ config GENERIC_ISA_DMA
 	bool
 
 config FIQ
-	bool
+	bool "ARM FIQ support"
+
+config NON_NESTED_FIQ
+    bool "Support non-nested FIQ on arm"
+	default n
 
 config ARCH_MTD_XIP
 	bool
 
 config GENERIC_HARDIRQS_NO__DO_IRQ
 	def_bool y
+
+config BOOTINFO
+    bool "Boot Information Feature"
+    default n
+    help
+      This feature provides access to certain boot information
+      from both kernel context (via function call) and user
+      context (via /proc/bootinfo).
+
+config ARCH_PROVIDES_UDELAY
+  bool
 
 if OPROFILE
 
@@ -537,6 +560,20 @@ config ARCH_W90X900
 	  <http://www.nuvoton.com/hq/enu/ProductAndSales/ProductLines/
 		ConsumerElectronicsIC/ARMMicrocontroller/ARMMicrocontroller>
 
+config ARCH_TEGRA
+	bool "NVIDIA Tegra"
+	select GENERIC_TIME
+	select GENERIC_CLOCKEVENTS
+	select GENERIC_GPIO
+	select HAVE_CLK
+	select COMMON_CLKDEV
+	select ARCH_HAS_BARRIERS if CACHE_L2X0
+	select ARCH_PROVIDES_UDELAY
+	select ARCH_HAS_CPUFREQ
+	help
+	  This enables support for NVIDIA Tegra based systems (Tegra APX,
+	  Tegra 6xx and Tegra 2 series).
+
 config ARCH_PNX4008
 	bool "Philips Nexperia PNX4008 Mobile"
 	select CPU_ARM926T
@@ -779,6 +816,7 @@ source "arch/arm/mach-h720x/Kconfig"
 source "arch/arm/mach-versatile/Kconfig"
 
 source "arch/arm/mach-aaec2000/Kconfig"
+source "arch/arm/mach-tegra/Kconfig"
 
 source "arch/arm/mach-realview/Kconfig"
 
@@ -837,6 +875,19 @@ if !MMU
 source "arch/arm/Kconfig-nommu"
 endif
 
+config TEGRA_ERRATA_657451
+	bool "Store bit 20 of CP15 TLS register c13,3 in bit 0"
+	depends on ARCH_TEGRA_2x_SOC && HAS_TLS_REG
+	default y
+	help
+	  This option enables a workaround for the 657451 Tegra 2 errata
+	  which causes unreliable reads from bit 20 of the thread storage
+	  register c13, 3 (used by the __set_tls system call). It stores the
+	  value intended for bit 20 into bit 0 instead; in most user-space
+	  environments, the value saved by __set_tls is an aligned address,
+	  so repurposing bit 0 will not cause ill effects.
+
+
 config ARM_ERRATA_411920
 	bool "ARM errata: Invalidation of the Instruction Cache operation can fail"
 	depends on CPU_V6 && !SMP
@@ -886,6 +937,104 @@ config ARM_ERRATA_460075
 	  workaround disables the write-allocate mode for the L2 cache via the
 	  ACTLR register. Note that setting specific bits in the ACTLR register
 	  may not be available in non-secure mode.
+
+config ARM_ERRATA_716044
+	bool "ARM errata: Under very rare circumstances, an uncacheable load multiple instruction can cause a deadlock"
+	depends on CPU_V7
+	help
+	  Under some rare circumstances, an uncacheable load multiple
+	  instruction (LDRD, LDM, VLDM, VLD1, VLD2, VLD3, VLD4) can cause
+	  a processor deadlock.
+
+config ARM_ERRATA_742230
+	bool "ARM errata: DMB instructions may not ensure correct visibility ordering"
+	depends on CPU_V7 && SMP
+	help
+	  This option enables the workaround for the 742230 Cortex-A9 (r1p0,
+	  r1p1, r1p2, r2p0, r2p1 and r2p2) erratum. Under rare circumstances,
+	  a DMB instruction between two writes may not ensure the correct
+	  visibility ordering of the writes to other observers. The work-around
+	  disables the DMB_lite operation by setting bit 4 of the the
+	  undocumented diagnostic register, causing DMB instructions to
+	  behave like DSB.
+
+config ARM_ERRATA_742231
+	bool "ARM errata: Incorrect hazard handling in the SCU may lead to data corruption"
+	depends on CPU_V7 && SMP
+	help
+	  This option enables the workaround for the 742231 Cortex-A9
+	  (r2p0..r2p2) erratum. Under certain conditions, specific to the
+	  Cortex-A9 MPCore micro-architecture, two CPUs working in SMP mode,
+	  accessing some data located in the same cache line, may get corrupted
+	  data due to bad handling of the address hazard when the line gets
+	  replaced from one of the CPUs at the same time as another CPU is
+	  accessing it. This workaround sets specific bits in the diagnostic
+	  register of the Cortex-A9 which reduces the linefill issuing
+	  capabilities of the processor.
+
+config ARM_ERRATA_751472
+	bool "ARM errata: An interrupted ICIALLUIS operation may prevent the completion of a following broadcated operation"
+	depends on CPU_V7 && SMP
+	help
+		This option enables the workaround for the 751472 Cortex-A9 (r0/r1/r2)
+		erratum. In an MPCore configuration with 2 processors or more working in
+		SMP mode with maintenance operation broadcast enabled, if a processor is
+		interrupted while executing an ICIALLUIS operation, and performs another
+		broadcasted maintenance operation during its Interrupt Service Routine,
+		then this second operation may not be executed on the other processors in
+		the cluster. This workaround sets bit[11] in the undocumented Diagnostic
+		Control register, which prevents maintenance operations from being
+		interrupted.
+
+config PL310_ERRATA_588369
+	bool "Clean & Invalidate maintenance operations do not invalidate clean lines"
+	depends on CACHE_L2X0 && ARCH_OMAP4
+	help
+	   The PL310 L2 cache controller implements three types of Clean &
+	   Invalidate maintenance operations: by Physical Address
+	   (offset 0x7F0), by Index/Way (0x7F8) and by Way (0x7FC).
+	   They are architecturally defined to behave as the execution of a
+	   clean operation followed immediately by an invalidate operation,
+	   both performing to the same memory location. This functionality
+	   is not correctly implemented in PL310 as clean lines are not
+	   invalidated as a result of these operations. Note that this errata
+	   uses Texas Instrument's secure monitor api.
+
+config PL310_ERRATA_727915
+	bool "ARM errata: PL310, Background Clean and Invalidate by Way operation can cause data corruption"
+	depends on CACHE_L2X0
+	help
+	   PL310 implements the Clean & Invalidate by Way L2 cache maintenance
+           operation (offset 0x7FC). This operation runs in background so that
+           PL310 can handle normal accesses while it is in progress. Under very
+           rare circumstances, due to this erratum, write data can be lost when
+           PL310 treats a cacheable write transaction during a Clean & Invalidate
+           by Way operation.
+
+config ARM_ERRATA_720789
+	bool "ARM errata: TLBIASIDIS and TLBIMVAIS operations can broadcast a faulty ASID"
+	depends on CPU_V7 && SMP
+	help
+	  This option enables the workaround for the 720789 Cortex-A9 (prior to
+	  r2p0) erratum. A faulty ASID can be sent to the other CPUs for the
+	  broadcasted CP15 TLB maintenance operations TLBIASIDIS and TLBIMVAIS.
+	  As a consequence of this erratum, some TLB entries which should be
+	  invalidated are not, resulting in an incoherency in the system page
+	  tables. The workaround changes the TLB flushing routines to invalidate
+	  entries regardless of the ASID.
+
+config ARM_ERRATA_743622
+	bool "ARM errata: Faulty hazard checking in the Store Buffer may lead to data corruption"
+	depends on CPU_V7
+	help
+	  This option enables the workaround for the 743622 Cortex-A9
+	  (r2p0..r2p2) erratum. Under very rare conditions, a faulty
+	  optimisation in the Cortex-A9 Store Buffer may lead to data
+	  corruption. This workaround sets a specific bit in the diagnostic
+	  register of the Cortex-A9 which disables the Store Buffer
+	  optimisation, preventing the defect from occurring. This has no
+	  visible impact on the overall performance or power consumption of the
+	  processor.
 
 endmenu
 
@@ -955,10 +1104,11 @@ source "kernel/time/Kconfig"
 config SMP
 	bool "Symmetric Multi-Processing (EXPERIMENTAL)"
 	depends on EXPERIMENTAL && (REALVIEW_EB_ARM11MP || REALVIEW_EB_A9MP ||\
-		 MACH_REALVIEW_PB11MP || MACH_REALVIEW_PBX || ARCH_OMAP4)
+		 MACH_REALVIEW_PB11MP || MACH_REALVIEW_PBX || ARCH_OMAP4 || \
+		 ARCH_TEGRA)
 	depends on GENERIC_CLOCKEVENTS
 	select USE_GENERIC_SMP_HELPERS
-	select HAVE_ARM_SCU if (ARCH_REALVIEW || ARCH_OMAP4)
+	select HAVE_ARM_SCU if (ARCH_REALVIEW || ARCH_OMAP4 || ARCH_TEGRA)
 	help
 	  This enables support for systems with more than one CPU. If you have
 	  a system with only one CPU, like most personal computers, say N. If
@@ -985,6 +1135,13 @@ config HAVE_ARM_SCU
 config HAVE_ARM_TWD
 	bool
 	depends on SMP
+	help
+	  This options enables support for the ARM timer and watchdog unit
+
+config USE_ARM_TWD_PRESCALER
+	bool
+	depends on HAVE_ARM_TWD
+	default y if (CPU_FREQ || ARCH_TEGRA)
 	help
 	  This options enables support for the ARM timer and watchdog unit
 
@@ -1027,9 +1184,10 @@ config HOTPLUG_CPU
 config LOCAL_TIMERS
 	bool "Use local timer interrupts"
 	depends on SMP && (REALVIEW_EB_ARM11MP || MACH_REALVIEW_PB11MP || \
-		REALVIEW_EB_A9MP || MACH_REALVIEW_PBX || ARCH_OMAP4)
+		REALVIEW_EB_A9MP || MACH_REALVIEW_PBX || ARCH_OMAP4 || \
+		ARCH_TEGRA)
 	default y
-	select HAVE_ARM_TWD if (ARCH_REALVIEW || ARCH_OMAP4)
+	select HAVE_ARM_TWD if (ARCH_REALVIEW || ARCH_OMAP4 || ARCH_TEGRA)
 	help
 	  Enable support for local timers on SMP platforms, rather then the
 	  legacy IPI broadcast method.  Local timers allows the system

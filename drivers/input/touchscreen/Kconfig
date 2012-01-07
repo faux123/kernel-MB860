@@ -11,6 +11,26 @@ menuconfig INPUT_TOUCHSCREEN
 
 if INPUT_TOUCHSCREEN
 
+config TOUCHSCREEN_XMEGAT
+	tristate "Atmel xMegaT Touchscreen"
+	depends on I2C
+	help
+	  Say Y here to enable XMegaT touchscreen support.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called xmeagat.
+
+config XMEGAT_USE_RESET_TO_RESUME
+	bool
+	default y
+
+config XMEGAT_DO_HARD_RESET
+	bool
+	depends on XMEGAT_USE_RESET_TO_RESUME
+	default y
+
 config TOUCHSCREEN_ADS7846
 	tristate "ADS7846/TSC2046 and ADS7843 based touchscreens"
 	depends on SPI_MASTER
@@ -270,6 +290,20 @@ config TOUCHSCREEN_MIGOR
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called migor_ts.
+
+config TOUCHSCREEN_SYNAPTICS_I2C_RMI
+	tristate "Synaptics i2c touchscreen"
+	depends on I2C
+	help
+	  This enables support for Synaptics RMI over I2C based touchscreens.
+
+config TOUCHSCREEN_TEGRA_ODM
+	boolean "NVIDIA Tegra ODM-kit based touchscreen driver"
+	depends on ARCH_TEGRA && TEGRA_NVRM
+	default n
+	help
+	  Adds a touchscreen input device for drivers written using NVIDIA's
+	  Tegra ODM kit interface
 
 config TOUCHSCREEN_TOUCHRIGHT
 	tristate "Touchright serial touchscreen"

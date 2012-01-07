@@ -59,6 +59,16 @@ ifndef KBUILD_CHECKSRC
   KBUILD_CHECKSRC = 0
 endif
 
+# Motorola: Host OS needed for Darwin support below
+HOST_OS:=$(shell uname -s)
+ifneq (,$(findstring Darwin,$(HOST_OS)))
+	HOST_OS := darwin
+endif
+ifneq (,$(findstring Macintosh,$(HOST_OS)))
+	HOST_OS := darwin
+endif
+# End Motorola
+
 # Use make M=dir to specify directory of external module to build
 # Old syntax make ... SUBDIRS=$PWD is still supported
 # Setting the environment variable KBUILD_EXTMOD take precedence
@@ -221,8 +231,13 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 
 HOSTCC       = gcc
 HOSTCXX      = g++
-HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer
+HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer 
 HOSTCXXFLAGS = -O2
+
+ifeq ($(HOST_OS),darwin)
+$(warning using checked-in host headers for Darwin OS)
+HOSTCFLAGS  += -Iinclude/darwin-missing
+endif
 
 # Decide whether to build built-in, modular, or both.
 # Normally, just do built-in.

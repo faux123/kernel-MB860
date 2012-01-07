@@ -16,6 +16,29 @@ config LEDS_CLASS
 	  need this to do anything useful with LEDs.  If unsure, say N.
 
 comment "LED drivers"
+config LEDS_LM3532
+	tristate "Support for LM3530 display backlight driver"
+	depends on LEDS_CLASS
+	help
+	  This option enables support for LM3532 display backlight driver
+
+config LEDS_LM3530
+	tristate "Support for LM3530 display backlight driver"
+	depends on LEDS_CLASS
+	help
+	  This option enables support for LM3530 display backlight driver
+
+config LEDS_CPCAP_BUTTON
+	tristate "LED Support for Button LEDS connected to CPCAP"
+	depends on LEDS_CLASS && MFD_CPCAP
+	help
+	  This option enables support for button LEDs connected to CPCAP
+
+config LEDS_CPCAP_RGB
+	tristate "LED Support for RGB LEDS connected to CPCAP"
+	depends on LEDS_CLASS && MFD_CPCAP
+	help
+	  This option enables support for RGB LEDs connected to CPCAP
 
 config LEDS_ATMEL_PWM
 	tristate "LED Support using Atmel PWM outputs"
@@ -300,6 +323,12 @@ config LEDS_TRIGGER_DEFAULT_ON
 	help
 	  This allows LEDs to be initialised in the ON state.
 	  If unsure, say Y.
+
+config LEDS_TRIGGER_SLEEP
+	tristate "LED Sleep Mode Trigger"
+	depends on LEDS_TRIGGERS && HAS_EARLYSUSPEND
+	help
+	  This turns LEDs on when the screen is off but the cpu still running.
 
 comment "iptables trigger is under Netfilter config (LED target)"
 	depends on LEDS_TRIGGERS

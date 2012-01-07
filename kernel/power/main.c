@@ -44,6 +44,32 @@ int pm_notifier_call_chain(unsigned long val)
 			== NOTIFY_BAD) ? -EINVAL : 0;
 }
 
+/* If set, devices may be suspended and resumed asynchronously. */
+int pm_async_enabled = 1;
+
+static ssize_t pm_async_show(struct kobject *kobj, struct kobj_attribute *attr,
+			     char *buf)
+{
+	return sprintf(buf, "%d\n", pm_async_enabled);
+}
+
+static ssize_t pm_async_store(struct kobject *kobj, struct kobj_attribute *attr,
+			      const char *buf, size_t n)
+{
+	unsigned long val;
+
+	if (strict_strtoul(buf, 10, &val))
+		return -EINVAL;
+
+	if (val > 1)
+		return -EINVAL;
+
+	pm_async_enabled = val;
+	return n;
+}
+
+power_attr(pm_async);
+
 #ifdef CONFIG_PM_DEBUG
 int pm_test_level = TEST_NONE;
 
@@ -109,6 +135,18 @@ power_attr(pm_test);
 
 #endif /* CONFIG_PM_SLEEP */
 
+#ifdef CONFIG_PM_DEEPSLEEP
+static int pm_deepsleep_enabled;
+
+int get_deepsleep_mode(void)
+{
+	return pm_deepsleep_enabled;
+}
+EXPORT_SYMBOL(get_deepsleep_mode);
+
+power_attr(active_wake_lock);
+#endif
+
 struct kobject *power_kobj;
 
 /**
@@ -147,12 +185,19 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 			   const char *buf, size_t n)
 {
 #ifdef CONFIG_SUSPEND
+#ifdef CONFIG_EARLYSUSPEND
+	suspend_state_t state = PM_SUSPEND_ON;
+#else
 	suspend_state_t state = PM_SUSPEND_STANDBY;
+#endif
 	const char * const *s;
 #endif
 	char *p;
 	int len;
 	int error = -EINVAL;
+#ifdef CONFIG_PM_DEEPSLEEP
+	char temp[20];
+#endif
 
 	p = memchr(buf, '\n', n);
 	len = p ? p - buf : n;
@@ -160,16 +205,53 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 	/* First, check if we are requested to hibernate */
 	if (len == 4 && !strncmp(buf, "disk", len)) {
 		error = hibernate();
-  goto Exit;
+		goto Exit;
 	}
 
+#ifdef CONFIG_PM_DEEPSLEEP
+	if (sizeof(temp) - 1 < len) {
+		len = sizeof(temp)-1;
+		printk(KERN_ERR "pm states is invalid\n");
+	}
+	memset(temp, 0, sizeof(temp));
+	strncpy(temp, buf, len);
+
+	if (len == 9 && !strncmp(temp, "deepsleep", len)) {
+		s = &pm_states[PM_SUSPEND_MEM];
+		if (strlen(*s) > sizeof(temp) - 1) {
+			printk(KERN_ERR "pm states overflow\n");
+		} else {
+			memset(temp, 0, sizeof(temp));
+			strncpy(temp, *s, strlen(*s));
+			pm_deepsleep_enabled = 1;
+		}
+	} else if (pm_deepsleep_enabled == 1 && len == 2
+			&& !strncmp(temp, "on", len)) {
+		pm_deepsleep_enabled = 0;
+	}
+#endif
+
 #ifdef CONFIG_SUSPEND
+#ifdef CONFIG_PM_DEEPSLEEP
+	for (s = &pm_states[state]; state < PM_SUSPEND_MAX; s++, state++) {
+		if (*s && len == strlen(*s) && !strncmp(temp, *s, len))
+			break;
+	}
+#else
 	for (s = &pm_states[state]; state < PM_SUSPEND_MAX; s++, state++) {
 		if (*s && len == strlen(*s) && !strncmp(buf, *s, len))
 			break;
 	}
+#endif
 	if (state < PM_SUSPEND_MAX && *s)
+#ifdef CONFIG_EARLYSUSPEND
+		if (state == PM_SUSPEND_ON || valid_state(state)) {
+			error = 0;
+			request_suspend_state(state);
+		}
+#else
 		error = enter_state(state);
+#endif
 #endif
 
  Exit:
@@ -177,6 +259,60 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 }
 
 power_attr(state);
+
+#ifdef CONFIG_PM_SLEEP
+/*
+ * The 'wakeup_count' attribute, along with the functions defined in
+ * drivers/base/power/wakeup.c, provides a means by which wakeup events can be
+ * handled in a non-racy way.
+ *
+ * If a wakeup event occurs when the system is in a sleep state, it simply is
+ * woken up.  In turn, if an event that would wake the system up from a sleep
+ * state occurs when it is undergoing a transition to that sleep state, the
+ * transition should be aborted.  Moreover, if such an event occurs when the
+ * system is in the working state, an attempt to start a transition to the
+ * given sleep state should fail during certain period after the detection of
+ * the event.  Using the 'state' attribute alone is not sufficient to satisfy
+ * these requirements, because a wakeup event may occur exactly when 'state'
+ * is being written to and may be delivered to user space right before it is
+ * frozen, so the event will remain only partially processed until the system is
+ * woken up by another event.  In particular, it won't cause the transition to
+ * a sleep state to be aborted.
+ *
+ * This difficulty may be overcome if user space uses 'wakeup_count' before
+ * writing to 'state'.  It first should read from 'wakeup_count' and store
+ * the read value.  Then, after carrying out its own preparations for the system
+ * transition to a sleep state, it should write the stored value to
+ * 'wakeup_count'.  If that fails, at least one wakeup event has occured since
+ * 'wakeup_count' was read and 'state' should not be written to.  Otherwise, it
+ * is allowed to write to 'state', but the transition will be aborted if there
+ * are any wakeup events detected after 'wakeup_count' was written to.
+ */
+
+static ssize_t wakeup_count_show(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				char *buf)
+{
+	unsigned long val;
+
+	return pm_get_wakeup_count(&val) ? sprintf(buf, "%lu\n", val) : -EINTR;
+}
+
+static ssize_t wakeup_count_store(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				const char *buf, size_t n)
+{
+	unsigned long val;
+
+	if (sscanf(buf, "%lu", &val) == 1) {
+		if (pm_save_wakeup_count(val))
+			return n;
+	}
+	return -EINVAL;
+}
+
+power_attr(wakeup_count);
+#endif /* CONFIG_PM_SLEEP */
 
 #ifdef CONFIG_PM_TRACE
 int pm_trace_enabled;
@@ -203,13 +339,29 @@ pm_trace_store(struct kobject *kobj, struct kobj_attribute *attr,
 power_attr(pm_trace);
 #endif /* CONFIG_PM_TRACE */
 
+#ifdef CONFIG_USER_WAKELOCK
+power_attr(wake_lock);
+power_attr(wake_unlock);
+#endif
+
 static struct attribute * g[] = {
 	&state_attr.attr,
 #ifdef CONFIG_PM_TRACE
 	&pm_trace_attr.attr,
 #endif
-#if defined(CONFIG_PM_SLEEP) && defined(CONFIG_PM_DEBUG)
+#ifdef CONFIG_PM_SLEEP
+	&pm_async_attr.attr,
+	&wakeup_count_attr.attr,
+#ifdef CONFIG_PM_DEBUG
 	&pm_test_attr.attr,
+#endif
+#ifdef CONFIG_USER_WAKELOCK
+	&wake_lock_attr.attr,
+	&wake_unlock_attr.attr,
+#endif
+#ifdef CONFIG_PM_DEEPSLEEP
+	&active_wake_lock_attr.attr,
+#endif
 #endif
 	NULL,
 };
@@ -236,6 +388,11 @@ static int __init pm_init(void)
 	int error = pm_start_workqueue();
 	if (error)
 		return error;
+
+#ifdef CONFIG_PM_DEEPSLEEP
+	pm_deepsleep_enabled = 0;
+#endif
+
 	power_kobj = kobject_create_and_add("power", NULL);
 	if (!power_kobj)
 		return -ENOMEM;

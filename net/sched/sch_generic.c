@@ -25,6 +25,7 @@
 #include <linux/rcupdate.h>
 #include <linux/list.h>
 #include <net/pkt_sched.h>
+#include <net/dst.h>
 
 /* Main transmission queue. */
 
@@ -39,6 +40,7 @@
 
 static inline int dev_requeue_skb(struct sk_buff *skb, struct Qdisc *q)
 {
+	skb_dst_force(skb);
 	q->gso_skb = skb;
 	q->qstats.requeues++;
 	q->q.qlen++;	/* it's still part of the queue */
@@ -184,7 +186,7 @@ static inline int qdisc_restart(struct Qdisc *q)
 	skb = dequeue_skb(q);
 	if (unlikely(!skb))
 		return 0;
-
+	WARN_ON_ONCE(skb_dst_is_noref(skb));
 	root_lock = qdisc_lock(q);
 	dev = qdisc_dev(q);
 	txq = netdev_get_tx_queue(dev, skb_get_queue_mapping(skb));

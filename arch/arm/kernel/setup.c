@@ -42,6 +42,9 @@
 #include <asm/mach/time.h>
 #include <asm/traps.h>
 #include <asm/unwind.h>
+#ifdef CONFIG_BOOTINFO
+#include <asm/bootinfo.h>
+#endif
 
 #include "compat.h"
 #include "atags.h"
@@ -102,12 +105,16 @@ struct cpu_cache_fns cpu_cache;
 #endif
 #ifdef CONFIG_OUTER_CACHE
 struct outer_cache_fns outer_cache;
+EXPORT_SYMBOL(outer_cache);
 #endif
 
 struct stack {
 	u32 irq[3];
 	u32 abt[3];
 	u32 und[3];
+#ifdef CONFIG_NON_NESTED_FIQ
+	u32 fiq[3];
+#endif
 } ____cacheline_aligned;
 
 static struct stack stacks[NR_CPUS];
@@ -351,7 +358,14 @@ void cpu_init(void)
 	"msr	cpsr_c, %5\n\t"
 	"add	r14, %0, %6\n\t"
 	"mov	sp, r14\n\t"
+#ifndef CONFIG_NON_NESTED_FIQ
 	"msr	cpsr_c, %7"
+#else
+	"msr    cpsr_c, %7\n\t"
+	"add    r14, %0, %8\n\t"
+	"mov    sp, r14\n\t"
+	"msr    cpsr_c, %9"
+#endif
 	    :
 	    : "r" (stk),
 	      PLC (PSR_F_BIT | PSR_I_BIT | IRQ_MODE),
@@ -360,6 +374,10 @@ void cpu_init(void)
 	      "I" (offsetof(struct stack, abt[0])),
 	      PLC (PSR_F_BIT | PSR_I_BIT | UND_MODE),
 	      "I" (offsetof(struct stack, und[0])),
+#ifdef CONFIG_NON_NESTED_FIQ
+              PLC (PSR_F_BIT | PSR_I_BIT | FIQ_MODE),
+              "I" (offsetof(struct stack, fiq[0])),
+#endif
 	      PLC (PSR_F_BIT | PSR_I_BIT | SVC_MODE)
 	    : "r14");
 }
@@ -634,6 +652,18 @@ static int __init parse_tag_cmdline(const struct tag *tag)
 }
 
 __tagtable(ATAG_CMDLINE, parse_tag_cmdline);
+
+#ifdef CONFIG_BOOTINFO
+static int __init parse_tag_powerup_reason(const struct tag *tag)
+{
+	bi_set_powerup_reason(tag->u.powerup_reason.powerup_reason);
+	printk(KERN_ERR "%s: powerup reason=0x%08x\n",
+				__func__, bi_powerup_reason());
+	return 0;
+}
+
+__tagtable(ATAG_POWERUP_REASON, parse_tag_powerup_reason);
+#endif /* CONFIG_BOOTINFO */
 
 /*
  * Scan the tag table for this tag, and call its parse function.

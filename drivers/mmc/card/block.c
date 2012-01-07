@@ -30,6 +30,7 @@
 #include <linux/mutex.h>
 #include <linux/scatterlist.h>
 #include <linux/string_helpers.h>
+#include <linux/apanic.h>
 
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
@@ -44,9 +45,9 @@
 MODULE_ALIAS("mmc:block");
 
 /*
- * max 8 partitions per card
+ * max 32 partitions per card
  */
-#define MMC_SHIFT	3
+#define MMC_SHIFT	5
 #define MMC_NUM_MINORS	(256 >> MMC_SHIFT)
 
 static DECLARE_BITMAP(dev_use, MMC_NUM_MINORS);
@@ -58,6 +59,7 @@ struct mmc_blk_data {
 	spinlock_t	lock;
 	struct gendisk	*disk;
 	struct mmc_queue queue;
+	char            *bounce;
 
 	unsigned int	usage;
 	unsigned int	read_only;
@@ -94,6 +96,9 @@ static void mmc_blk_put(struct mmc_blk_data *md)
 		blk_cleanup_queue(md->queue.queue);
 
 		__clear_bit(devidx, dev_use);
+
+		if (md->bounce)
+			kfree(md->bounce);
 
 		put_disk(md->disk);
 		kfree(md);
@@ -241,14 +246,202 @@ static u32 get_card_status(struct mmc_card *card, struct request *req)
 	return cmd.resp[0];
 }
 
-static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
+static int
+mmc_blk_set_blksize(struct mmc_blk_data *md, struct mmc_card *card)
 {
-	struct mmc_blk_data *md = mq->data;
-	struct mmc_card *card = md->queue.card;
-	struct mmc_blk_request brq;
-	int ret = 1, disable_multi = 0;
+	struct mmc_command cmd;
+	int err;
+
+	/* Block-addressed cards ignore MMC_SET_BLOCKLEN. */
+	if (mmc_card_blockaddr(card))
+		return 0;
 
 	mmc_claim_host(card->host);
+	cmd.opcode = MMC_SET_BLOCKLEN;
+	cmd.arg = 512;
+	cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_AC;
+	err = mmc_wait_for_cmd(card->host, &cmd, 5);
+	mmc_release_host(card->host);
+
+	if (err) {
+		printk(KERN_ERR "%s: unable to set block size to %d: %d\n",
+			md->disk->disk_name, cmd.arg, err);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+/*
+ * Workaround for Toshiba eMMC performance.  If the request is less than two
+ * flash pages in size, then we want to split the write into one or two
+ * page-aligned writes to take advantage of faster buffering.  Here we can
+ * adjust the size of the MMC request and let the block layer request handler
+ * deal with generating another MMC request.
+ */
+#define TOSHIBA_MANFID 0x11
+#define TOSHIBA_PAGE_SIZE 16		/* sectors */
+#define TOSHIBA_ADJUST_THRESHOLD 24	/* sectors */
+static bool mmc_adjust_toshiba_write(struct mmc_card *card,
+                                     struct mmc_request *mrq)
+{
+	if (mmc_card_mmc(card) && card->cid.manfid == TOSHIBA_MANFID &&
+	    mrq->data->blocks <= TOSHIBA_ADJUST_THRESHOLD) {
+		int sectors_in_page = TOSHIBA_PAGE_SIZE -
+		                      (mrq->cmd->arg % TOSHIBA_PAGE_SIZE);
+		if (mrq->data->blocks > sectors_in_page) {
+			mrq->data->blocks = sectors_in_page;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/*
+ * This is another strange workaround to try to close the gap on Toshiba eMMC
+ * performance when compared to other vendors.  In order to take advantage
+ * of certain optimizations and assumptions in those cards, we will look for
+ * multiblock write transfers below a certain size and we do the following:
+ *
+ * - Break them up into seperate page-aligned (8k flash pages) transfers.
+ * - Execute the transfers in reverse order.
+ * - Use "reliable write" transfer mode.
+ *
+ * Neither the block I/O layer nor the scatterlist design seem to lend them-
+ * selves well to executing a block request out of order.  So instead we let
+ * mmc_blk_issue_rq() setup the MMC request for the entire transfer and then
+ * break it up and reorder it here.  This also requires that we put the data
+ * into a bounce buffer and send it as individual sg's.
+ */
+#define TOSHIBA_LOW_THRESHOLD 48	/* sectors */
+#define TOSHIBA_HIGH_THRESHOLD 64	/* sectors */
+static bool mmc_handle_toshiba_write(struct mmc_queue *mq,
+                                     struct mmc_card *card,
+                                     struct mmc_request *mrq)
+{
+	struct mmc_blk_data *md = mq->data;
+	unsigned int first_page, last_page, page;
+	unsigned long flags;
+
+	if (!md->bounce ||
+	    mrq->data->blocks > TOSHIBA_HIGH_THRESHOLD ||
+	    mrq->data->blocks < TOSHIBA_LOW_THRESHOLD)
+		return false;
+
+	first_page = mrq->cmd->arg / TOSHIBA_PAGE_SIZE;
+	last_page = (mrq->cmd->arg + mrq->data->blocks - 1) / TOSHIBA_PAGE_SIZE;
+
+	/* Single page write: just do it the normal way */
+	if (first_page == last_page)
+		return false;
+
+	local_irq_save(flags);
+	sg_copy_to_buffer(mrq->data->sg, mrq->data->sg_len,
+	                  md->bounce, mrq->data->blocks * 512);
+	local_irq_restore(flags);
+
+	for (page = last_page; page >= first_page; page--) {
+		unsigned long offset, length;
+		struct mmc_blk_request brq;
+		struct mmc_command cmd;
+		struct scatterlist sg;
+
+		memset(&brq, 0, sizeof(struct mmc_blk_request));
+		brq.mrq.cmd = &brq.cmd;
+		brq.mrq.data = &brq.data;
+
+		brq.cmd.arg = page * TOSHIBA_PAGE_SIZE;
+		brq.data.blksz = 512;
+		if (page == first_page) {
+			brq.cmd.arg = mrq->cmd->arg;
+			brq.data.blocks = TOSHIBA_PAGE_SIZE -
+			                  (mrq->cmd->arg % TOSHIBA_PAGE_SIZE);
+		} else if (page == last_page)
+			brq.data.blocks = (mrq->cmd->arg + mrq->data->blocks) %
+			                  TOSHIBA_PAGE_SIZE;
+		if (brq.data.blocks == 0)
+			brq.data.blocks = TOSHIBA_PAGE_SIZE;
+
+		if (!mmc_card_blockaddr(card))
+			brq.cmd.arg <<= 9;
+		brq.cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_ADTC;
+		brq.stop.opcode = MMC_STOP_TRANSMISSION;
+		brq.stop.arg = 0;
+		brq.stop.flags = MMC_RSP_SPI_R1B | MMC_RSP_R1B | MMC_CMD_AC;
+
+		brq.data.flags |= MMC_DATA_WRITE;
+		if (brq.data.blocks > 1) {
+			if (!mmc_host_is_spi(card->host))
+				brq.mrq.stop = &brq.stop;
+			brq.cmd.opcode = MMC_WRITE_MULTIPLE_BLOCK;
+		} else {
+			brq.mrq.stop = NULL;
+			brq.cmd.opcode = MMC_WRITE_BLOCK;
+		}
+
+		if (brq.cmd.opcode == MMC_WRITE_MULTIPLE_BLOCK &&
+		    brq.data.blocks <= card->ext_csd.rel_wr_sec_c) {
+			int err;
+
+			cmd.opcode = MMC_SET_BLOCK_COUNT;
+			cmd.arg = brq.data.blocks | (1 << 31);
+			cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
+			err = mmc_wait_for_cmd(card->host, &cmd, 0);
+			if (!err)
+				brq.mrq.stop = NULL;
+		}
+
+		mmc_set_data_timeout(&brq.data, card);
+
+		offset = (brq.cmd.arg - mrq->cmd->arg) * 512;
+		length = brq.data.blocks * 512;
+		sg_init_one(&sg, md->bounce + offset, length);
+		brq.data.sg = &sg;
+		brq.data.sg_len = 1;
+
+		mmc_wait_for_req(card->host, &brq.mrq);
+
+		mrq->data->bytes_xfered += brq.data.bytes_xfered;
+
+		if (brq.cmd.error || brq.data.error || brq.stop.error) {
+			mrq->cmd->error = brq.cmd.error;
+			mrq->data->error = brq.data.error;
+			mrq->stop->error = brq.stop.error;
+
+			/*
+			 * We're executing the request backwards, so don't let
+			 * the block layer think some part of it has succeeded.
+			 * It will get it wrong.  Since the failure will cause
+			 * us to fall back on single block writes, we're better
+			 * off reporting that none of the data was written.
+			 */
+			mrq->data->bytes_xfered = 0;
+			break;
+		}
+	}
+
+	return true;
+}
+
+static int mmc_blk_xfer_rq(struct mmc_blk_data *md,
+	struct request *req, unsigned int *bytes_xfered)
+{
+	struct mmc_queue *mq = &md->queue;
+	struct mmc_card *card = mq->card;
+	struct mmc_blk_request brq;
+	int ret = 1;
+	int disable_multi = 0;
+	int retry = 0;
+
+#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
+	if (mmc_bus_needs_resume(card->host)) {
+		mmc_resume_bus(card->host);
+		mmc_blk_set_blksize(md, card);
+	}
+#endif
+
+	BUG_ON(!bytes_xfered);
 
 	do {
 		struct mmc_command cmd;
@@ -307,6 +500,9 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 			brq.data.flags |= MMC_DATA_WRITE;
 		}
 
+		if (rq_data_dir(req) == WRITE)
+			mmc_adjust_toshiba_write(card, &brq.mrq);
+
 		mmc_set_data_timeout(&brq.data, card);
 
 		brq.data.sg = mq->sg;
@@ -333,10 +529,17 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 
 		mmc_queue_bounce_pre(mq);
 
-		mmc_wait_for_req(card->host, &brq.mrq);
+		/*
+		 * Try the workaround first for writes, then fall back.
+		 */
+		if (rq_data_dir(req) != WRITE || disable_multi ||
+		    !mmc_handle_toshiba_write(mq, card, &brq.mrq))
+			mmc_wait_for_req(card->host, &brq.mrq);
 
 		mmc_queue_bounce_post(mq);
 
+		ret = 0;
+		*bytes_xfered = brq.data.bytes_xfered;
 		/*
 		 * Check for errors here, but don't jump to cmd_err
 		 * until later as we need to wait for the card to leave
@@ -348,12 +551,19 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 				printk(KERN_WARNING "%s: retrying using single "
 				       "block read\n", req->rq_disk->disk_name);
 				disable_multi = 1;
+				retry = 1;
 				continue;
 			}
 			status = get_card_status(card, req);
+		} else if (disable_multi == 1) {
+			disable_multi = 0;
+			printk(KERN_INFO "%s: multi block enabled\n",
+				req->rq_disk->disk_name);
 		}
+		retry = 0;
 
 		if (brq.cmd.error) {
+			ret = brq.cmd.error;
 			printk(KERN_ERR "%s: error %d sending read/write "
 			       "command, response %#x, card status %#x\n",
 			       req->rq_disk->disk_name, brq.cmd.error,
@@ -361,6 +571,7 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 		}
 
 		if (brq.data.error) {
+			ret = brq.data.error;
 			if (brq.data.error == -ETIMEDOUT && brq.mrq.stop)
 				/* 'Stop' response contains card status */
 				status = brq.mrq.stop->resp[0];
@@ -372,16 +583,20 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 		}
 
 		if (brq.stop.error) {
+			ret = brq.stop.error;
 			printk(KERN_ERR "%s: error %d sending stop command, "
 			       "response %#x, card status %#x\n",
 			       req->rq_disk->disk_name, brq.stop.error,
 			       brq.stop.resp[0], status);
 		}
 
+		/*
+		* We need to wait for the card to leave programming mode
+		* even when things go wrong.
+		*/
 		if (!mmc_host_is_spi(card->host) && rq_data_dir(req) != READ) {
 			do {
 				int err;
-
 				cmd.opcode = MMC_SEND_STATUS;
 				cmd.arg = card->rca << 16;
 				cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
@@ -389,7 +604,8 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 				if (err) {
 					printk(KERN_ERR "%s: error %d requesting status\n",
 					       req->rq_disk->disk_name, err);
-					goto cmd_err;
+					ret = err;
+					break;
 				}
 				/*
 				 * Some cards mishandle the status bits,
@@ -398,75 +614,197 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 				 */
 			} while (!(cmd.resp[0] & R1_READY_FOR_DATA) ||
 				(R1_CURRENT_STATE(cmd.resp[0]) == 7));
-
-#if 0
-			if (cmd.resp[0] & ~0x00000900)
-				printk(KERN_ERR "%s: status = %08x\n",
-				       req->rq_disk->disk_name, cmd.resp[0]);
-			if (mmc_decode_status(cmd.resp))
-				goto cmd_err;
-#endif
-		}
-
-		if (brq.cmd.error || brq.stop.error || brq.data.error) {
-			if (rq_data_dir(req) == READ) {
-				/*
-				 * After an error, we redo I/O one sector at a
-				 * time, so we only reach here after trying to
-				 * read a single sector.
-				 */
-				spin_lock_irq(&md->lock);
-				ret = __blk_end_request(req, -EIO, brq.data.blksz);
-				spin_unlock_irq(&md->lock);
-				continue;
-			}
-			goto cmd_err;
 		}
 
 		/*
-		 * A block was successfully transferred.
+		 * Adjust the number of bytes transferred if there has been
+		 * an error...
+		 */
+		if (ret) {
+			/*
+			 * For reads we just fail the entire chunk as that
+			 * should be safe in all cases.
+			 *
+			 * If this is an SD card and we're writing, we can ask
+			 * the card for known good sectors.
+			 *
+			 * If the card is not SD, we can still ok written
+			 * sectors as reported by the controller (which might
+			 * be less than the real number of written sectors, but
+			 * never more).
+			 */
+			if (rq_data_dir(req) == READ)
+				*bytes_xfered = 0;
+			else if (mmc_card_sd(card)) {
+				u32 blocks = mmc_sd_num_wr_blocks(card);
+				if (blocks == (u32)-1)
+					*bytes_xfered = 0;
+				else
+					*bytes_xfered = blocks << 9;
+			}
+		}
+	} while (retry);
+
+	return ret;
+}
+
+static int mmc_blk_erase_rq(struct mmc_blk_data *md,
+	struct request *req, unsigned int *bytes_xfered)
+{
+	struct mmc_card *card;
+	struct mmc_command cmd;
+	int ret;
+
+	uint64_t start, end, blocks;
+
+	BUG_ON(!bytes_xfered);
+
+	*bytes_xfered = 0;
+
+	card = md->queue.card;
+
+	BUG_ON(mmc_card_blockaddr(card) && (card->csd.erase_size % 512));
+
+	start = ((uint64_t)blk_rq_pos(req)) << 9;
+	end = start + (((uint64_t)blk_rq_sectors(req)) << 9);
+
+	/*
+	 * The specs talk about the card removing the least
+	 * significant bits, but the erase sizes are not guaranteed
+	 * to be a power of two, so do a proper calculation.
+	 */
+	blocks = start;
+	if (do_div(blocks, card->csd.erase_size)) /* start % erase_size */
+		start = (blocks + 1) * card->csd.erase_size; /* roundup() */
+	blocks = end;
+	if (do_div(blocks, card->csd.erase_size))
+		end = blocks * card->csd.erase_size;
+
+	if (start == end)
+		goto out;
+
+	/*
+	 * The MMC spec isn't entirely clear that this should be done,
+	 * but it would be impossible to erase the entire card if the
+	 * addresses aren't sector based.
+	 */
+	if (mmc_card_blockaddr(card)) {
+		start >>= 9;
+		end >>= 9;
+	}
+
+	if (mmc_card_sd(card))
+		cmd.opcode = SD_ERASE_WR_BLK_START;
+	else
+		cmd.opcode = MMC_ERASE_GROUP_START;
+	cmd.arg = start;
+	cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
+
+	ret = mmc_wait_for_cmd(card->host, &cmd, 0);
+	if (ret) {
+		printk(KERN_ERR "%s: error %d setting block erase start address\n",
+		       req->rq_disk->disk_name, ret);
+		return ret;
+	}
+
+	if (mmc_card_sd(card))
+		cmd.opcode = SD_ERASE_WR_BLK_END;
+	else
+		cmd.opcode = MMC_ERASE_GROUP_END;
+	cmd.arg = end - 1; /* the span is inclusive */
+	cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
+
+	ret = mmc_wait_for_cmd(card->host, &cmd, 0);
+	if (ret) {
+		printk(KERN_ERR "%s: error %d setting block erase end address\n",
+		       req->rq_disk->disk_name, ret);
+		return ret;
+	}
+
+	cmd.opcode = MMC_ERASE;
+	cmd.arg = 0;	/* was MMC_ERASE_TYPE_SECURE */
+	cmd.flags = MMC_RSP_R1B | MMC_CMD_AC;
+
+	ret = mmc_wait_for_cmd(card->host, &cmd, 0);
+	if (ret) {
+		printk(KERN_ERR "%s: error %d starting block erase\n",
+		       req->rq_disk->disk_name, ret);
+		return ret;
+	}
+
+	/*
+	 * Wait for the card to finish the erase request...
+	 */
+	if (!mmc_host_is_spi(card->host)) {
+		do {
+			cmd.opcode = MMC_SEND_STATUS;
+			cmd.arg = card->rca << 16;
+			cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
+			ret = mmc_wait_for_cmd(card->host, &cmd, 5);
+			if (ret) {
+				printk(KERN_ERR "%s: error %d requesting status\n",
+				       req->rq_disk->disk_name, ret);
+				return ret;
+			}
+			/*
+			 * Some cards mishandle the status bits,
+			 * so make sure to check both the busy
+			 * indication and the card state.
+			 */
+		} while (!(cmd.resp[0] & R1_READY_FOR_DATA) ||
+			(R1_CURRENT_STATE(cmd.resp[0]) == 7));
+	}
+
+out:
+	*bytes_xfered = blk_rq_sectors(req) << 9;
+
+	return 0;
+}
+
+static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
+{
+	struct mmc_blk_data *md = mq->data;
+	struct mmc_card *card = md->queue.card;
+	int ret, err, bytes_xfered;
+
+	mmc_claim_host(card->host);
+
+	do {
+		if (blk_discard_rq(req))
+			err = mmc_blk_erase_rq(md, req, &bytes_xfered);
+		else
+			err = mmc_blk_xfer_rq(md, req, &bytes_xfered);
+
+		/*
+		 * First handle the sectors that got transferred
+		 * successfully...
 		 */
 		spin_lock_irq(&md->lock);
-		ret = __blk_end_request(req, 0, brq.data.bytes_xfered);
+		ret = __blk_end_request(req, 0, bytes_xfered);
 		spin_unlock_irq(&md->lock);
+
+		/*
+		 * ...then check if things went south.
+		 */
+		if (err) {
+			mmc_release_host(card->host);
+
+			/*
+			 * Kill of the rest of the request...
+			 */
+			spin_lock_irq(&md->lock);
+			while (ret)
+				ret = __blk_end_request(req, -EIO,
+					blk_rq_cur_bytes(req));
+			spin_unlock_irq(&md->lock);
+
+			return 0;
+		}
 	} while (ret);
 
 	mmc_release_host(card->host);
 
 	return 1;
-
- cmd_err:
- 	/*
- 	 * If this is an SD card and we're writing, we can first
- 	 * mark the known good sectors as ok.
- 	 *
-	 * If the card is not SD, we can still ok written sectors
-	 * as reported by the controller (which might be less than
-	 * the real number of written sectors, but never more).
-	 */
-	if (mmc_card_sd(card)) {
-		u32 blocks;
-
-		blocks = mmc_sd_num_wr_blocks(card);
-		if (blocks != (u32)-1) {
-			spin_lock_irq(&md->lock);
-			ret = __blk_end_request(req, 0, blocks << 9);
-			spin_unlock_irq(&md->lock);
-		}
-	} else {
-		spin_lock_irq(&md->lock);
-		ret = __blk_end_request(req, 0, brq.data.bytes_xfered);
-		spin_unlock_irq(&md->lock);
-	}
-
-	mmc_release_host(card->host);
-
-	spin_lock_irq(&md->lock);
-	while (ret)
-		ret = __blk_end_request(req, -EIO, blk_rq_cur_bytes(req));
-	spin_unlock_irq(&md->lock);
-
-	return 0;
 }
 
 
@@ -480,11 +818,30 @@ static struct mmc_blk_data *mmc_blk_alloc(struct mmc_card *card)
 {
 	struct mmc_blk_data *md;
 	int devidx, ret;
+#ifdef CONFIG_MMC_BLOCK_DEVICE_NUMBERING
+	int idx;
+	const char *mmc_blk_name;
+#endif
 
 	devidx = find_first_zero_bit(dev_use, MMC_NUM_MINORS);
 	if (devidx >= MMC_NUM_MINORS)
 		return ERR_PTR(-ENOSPC);
 	__set_bit(devidx, dev_use);
+
+#ifdef CONFIG_MMC_BLOCK_DEVICE_NUMBERING
+	mmc_blk_name = kobject_name(&card->host->parent->kobj);
+	mmc_blk_name = mmc_blk_name ? strrchr(mmc_blk_name, '.') : mmc_blk_name;
+	if (mmc_blk_name) {
+		mmc_blk_name++;
+		idx = simple_strtol(mmc_blk_name, NULL, 10);
+		if ( (idx >= 0) && (idx != devidx) &&
+			(!test_bit(idx, dev_use)) && (idx < MMC_NUM_MINORS) ) {
+			__set_bit(idx, dev_use);
+			__clear_bit(devidx, dev_use);
+			devidx = idx;
+		}
+	}
+#endif
 
 	md = kzalloc(sizeof(struct mmc_blk_data), GFP_KERNEL);
 	if (!md) {
@@ -492,6 +849,15 @@ static struct mmc_blk_data *mmc_blk_alloc(struct mmc_card *card)
 		goto out;
 	}
 
+	if (card->cid.manfid == TOSHIBA_MANFID && mmc_card_mmc(card)) {
+		pr_info("%s: enable Toshiba workaround\n",
+			mmc_hostname(card->host));
+		md->bounce = kmalloc(TOSHIBA_HIGH_THRESHOLD * 512, GFP_KERNEL);
+		if (!md->bounce) {
+			ret = -ENOMEM;
+			goto err_kfree;
+		}
+	}
 
 	/*
 	 * Set the read-only status based on the supported commands
@@ -557,36 +923,47 @@ static struct mmc_blk_data *mmc_blk_alloc(struct mmc_card *card)
  err_putdisk:
 	put_disk(md->disk);
  err_kfree:
+	if (md->bounce)
+		kfree(md->bounce);
 	kfree(md);
  out:
 	return ERR_PTR(ret);
 }
 
-static int
-mmc_blk_set_blksize(struct mmc_blk_data *md, struct mmc_card *card)
+#if defined(CONFIG_MACH_MOT) && defined(CONFIG_APANIC_MMC)
+static int mmc_apanic_annotate(struct mmc_blk_data *md, struct mmc_card *card)
 {
-	struct mmc_command cmd;
-	int err;
+	char cap_str[10];
+	char manf_str[8] = "Unknown";
+	char ident[80];
+	static bool once = true;
 
-	/* Block-addressed cards ignore MMC_SET_BLOCKLEN. */
-	if (mmc_card_blockaddr(card))
-		return 0;
+	string_get_size((u64)get_capacity(md->disk) << 9, STRING_UNITS_2,
+			cap_str, sizeof(cap_str));
 
-	mmc_claim_host(card->host);
-	cmd.opcode = MMC_SET_BLOCKLEN;
-	cmd.arg = 512;
-	cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_AC;
-	err = mmc_wait_for_cmd(card->host, &cmd, 5);
-	mmc_release_host(card->host);
-
-	if (err) {
-		printk(KERN_ERR "%s: unable to set block size to %d: %d\n",
-			md->disk->disk_name, cmd.arg, err);
-		return -EINVAL;
+	switch (card->cid.manfid) {
+	case 0x02:
+	case 0x45:
+		strcpy(manf_str, "Sandisk");
+		break;
+	case 0x11:
+		strcpy(manf_str, "Toshiba");
+		break;
 	}
 
-	return 0;
+	snprintf(ident, 80, "%s: %s %s %s %s %s\n",
+		md->disk->disk_name, mmc_card_id(card), manf_str,
+		mmc_card_name(card), cap_str, md->read_only ? "(ro)" : "");
+
+	printk(KERN_INFO "%s", ident);
+
+	if (once) {
+		once = false;
+		return apanic_annotate(ident);
+	} else
+		return 0;
 }
+#endif
 
 static int mmc_blk_probe(struct mmc_card *card)
 {
@@ -611,11 +988,19 @@ static int mmc_blk_probe(struct mmc_card *card)
 
 	string_get_size((u64)get_capacity(md->disk) << 9, STRING_UNITS_2,
 			cap_str, sizeof(cap_str));
+
+#if defined(CONFIG_MACH_MOT) && defined(CONFIG_APANIC_MMC)
+	mmc_apanic_annotate(md, card);
+#else
 	printk(KERN_INFO "%s: %s %s %s %s\n",
 		md->disk->disk_name, mmc_card_id(card), mmc_card_name(card),
 		cap_str, md->read_only ? "(ro)" : "");
+#endif
 
 	mmc_set_drvdata(card, md);
+#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
+	mmc_set_bus_resume_policy(card->host, 1);
+#endif
 	add_disk(md->disk);
 	return 0;
 
@@ -640,6 +1025,9 @@ static void mmc_blk_remove(struct mmc_card *card)
 		mmc_blk_put(md);
 	}
 	mmc_set_drvdata(card, NULL);
+#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
+	mmc_set_bus_resume_policy(card->host, 0);
+#endif
 }
 
 #ifdef CONFIG_PM
@@ -658,7 +1046,9 @@ static int mmc_blk_resume(struct mmc_card *card)
 	struct mmc_blk_data *md = mmc_get_drvdata(card);
 
 	if (md) {
+#ifndef CONFIG_MMC_BLOCK_DEFERRED_RESUME
 		mmc_blk_set_blksize(md, card);
+#endif
 		mmc_queue_resume(&md->queue);
 	}
 	return 0;

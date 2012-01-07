@@ -109,6 +109,31 @@ config RTC_INTF_DEV_UIE_EMUL
 	  clock several times per second, please enable this option
 	  only if you know that you really need it.
 
+config RTC_INTF_ALARM
+	bool "Android alarm driver"
+	depends on RTC_CLASS
+	default y
+	help
+	  Provides non-wakeup and rtc backed wakeup alarms based on rtc or
+	  elapsed realtime, and a non-wakeup alarm on the monotonic clock.
+	  Also provides an interface to set the wall time which must be used
+	  for elapsed realtime to work.
+
+config RTC_INTF_ALARM_DEV
+	bool "Android alarm device"
+	depends on RTC_INTF_ALARM
+	default y
+	help
+	  Exports the alarm interface to user-space.
+
+config RTC_INTF_SECCLKD
+	tristate "RTC SECCLKD"
+	default n
+	help
+	  CPCAP RTC driver provide support for secure clock daemon in
+	  gettting the counter maintained to keep track of the change
+	  in RTC time.
+
 config RTC_DRV_TEST
 	tristate "Test driver/device"
 	help
@@ -201,6 +226,14 @@ config RTC_DRV_X1205
 
 	  This driver can also be built as a module. If so, the module
 	  will be called rtc-x1205.
+
+config RTC_DRV_TEGRA_ODM
+	boolean "NVIDIA Tegra ODM kit PMU adaptation RTC driver"
+	depends on ARCH_TEGRA && TEGRA_NVRM
+	default RTC_CLASS
+	help
+	  RTC (Realtime Clock) driver for the RTC functionality implemented by
+	  the development system's ODM kit
 
 config RTC_DRV_PCF8563
 	tristate "Philips PCF8563/Epson RTC8564"
@@ -573,6 +606,12 @@ config RTC_DRV_AB3100
 	  Select this to enable the ST-Ericsson AB3100 Mixed Signal IC RTC
 	  support. This chip contains a battery- and capacitor-backed RTC.
 
+config RTC_DRV_CPCAP
+	depends on MFD_CPCAP
+	tristate "CPCAP RTC"
+	help
+	  If you say yes here you get support for the RTC subsystem of the
+	  CPCAP used in embedded systems.	  
 
 comment "on-CPU RTC drivers"
 

@@ -17,6 +17,7 @@
 #include <linux/notifier.h>
 #include <linux/module.h>
 #include <linux/sysctl.h>
+#include <linux/irq.h>
 
 #include <asm/irq_regs.h>
 
@@ -27,7 +28,7 @@ static DEFINE_PER_CPU(unsigned long, print_timestamp);
 static DEFINE_PER_CPU(struct task_struct *, watchdog_task);
 
 static int __read_mostly did_panic;
-int __read_mostly softlockup_thresh = 60;
+int __read_mostly softlockup_thresh = 15;
 
 /*
  * Should we panic (and reboot, if panic_timeout= is set) when a
@@ -153,6 +154,7 @@ void softlockup_tick(void)
 	printk(KERN_ERR "BUG: soft lockup - CPU#%d stuck for %lus! [%s:%d]\n",
 			this_cpu, now - touch_timestamp,
 			current->comm, task_pid_nr(current));
+	dump_irq_history();
 	print_modules();
 	print_irqtrace_events(current);
 	if (regs)

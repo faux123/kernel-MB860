@@ -37,6 +37,18 @@ config MMC_SDHCI
 
 	  If unsure, say N.
 
+config MMC_SDHCI_SIMPLE
+	tristate "Simple Secure Digital Host Controller Interface support"
+	help
+	  This selects the simplified Secure Digital Host Controller Interface.
+	  It is used by manufacturers such as Texas Instruments(R), Ricoh(R)
+	  and Toshiba(R). Most controllers found in laptops are of this type.
+
+	  If you have a controller with this interface, say Y or M here. You
+	  also need to enable an appropriate bus interface.
+
+	  If unsure, say N.
+
 config MMC_SDHCI_IO_ACCESSORS
 	bool
 	depends on MMC_SDHCI
@@ -54,6 +66,14 @@ config MMC_SDHCI_PCI
 	  If you have a controller with this interface, say Y or M here.
 
 	  If unsure, say N.
+
+config MMC_SDHCI_TEGRA
+	boolean "SDHCI support on NVIDIA Tegra SoCs"
+	depends on MMC_SDHCI && ARCH_TEGRA
+	default MMC_SDHCI
+	help
+	  This enables the internal SDHCI-compatible interfaces in NVIDIA
+	  Tegra SoCs
 
 config MMC_RICOH_MMC
 	tristate "Ricoh MMC Controller Disabler  (EXPERIMENTAL)"

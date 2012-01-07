@@ -86,7 +86,8 @@ static int mmc_decode_cid(struct mmc_card *card)
 	case 3: /* MMC v3.1 - v3.3 */
 	case 4: /* MMC v4 */
 		card->cid.manfid	= UNSTUFF_BITS(resp, 120, 8);
-		card->cid.oemid		= UNSTUFF_BITS(resp, 104, 16);
+		card->cid.cbx           = UNSTUFF_BITS(resp, 112, 2);
+		card->cid.oemid         = UNSTUFF_BITS(resp, 104, 8);
 		card->cid.prod_name[0]	= UNSTUFF_BITS(resp, 96, 8);
 		card->cid.prod_name[1]	= UNSTUFF_BITS(resp, 88, 8);
 		card->cid.prod_name[2]	= UNSTUFF_BITS(resp, 80, 8);
@@ -113,17 +114,18 @@ static int mmc_decode_cid(struct mmc_card *card)
 static int mmc_decode_csd(struct mmc_card *card)
 {
 	struct mmc_csd *csd = &card->csd;
-	unsigned int e, m, csd_struct;
+	unsigned int e, m, a, b;
 	u32 *resp = card->raw_csd;
 
 	/*
 	 * We only understand CSD structure v1.1 and v1.2.
 	 * v1.2 has extra information in bits 15, 11 and 10.
+	 * We also support eMMC v4.4 & v4.41.
 	 */
-	csd_struct = UNSTUFF_BITS(resp, 126, 2);
-	if (csd_struct != 1 && csd_struct != 2) {
+	csd->structure = UNSTUFF_BITS(resp, 126, 2);
+	if (csd->structure == 0) {
 		printk(KERN_ERR "%s: unrecognised CSD structure version %d\n",
-			mmc_hostname(card->host), csd_struct);
+			mmc_hostname(card->host), csd->structure);
 		return -EINVAL;
 	}
 
@@ -141,6 +143,11 @@ static int mmc_decode_csd(struct mmc_card *card)
 	e = UNSTUFF_BITS(resp, 47, 3);
 	m = UNSTUFF_BITS(resp, 62, 12);
 	csd->capacity	  = (1 + m) << (e + 2);
+#ifdef CONFIG_EMBEDDED_MMC_START_OFFSET
+	/* for sector-addressed cards, this will cause csd->capacity to wrap */
+	if (mmc_card_blockaddr(card))
+		csd->capacity -= card->host->ops->get_host_offset(card->host);
+#endif
 
 	csd->read_blkbits = UNSTUFF_BITS(resp, 80, 4);
 	csd->read_partial = UNSTUFF_BITS(resp, 79, 1);
@@ -149,6 +156,11 @@ static int mmc_decode_csd(struct mmc_card *card)
 	csd->r2w_factor = UNSTUFF_BITS(resp, 26, 3);
 	csd->write_blkbits = UNSTUFF_BITS(resp, 22, 4);
 	csd->write_partial = UNSTUFF_BITS(resp, 21, 1);
+
+	a = UNSTUFF_BITS(resp, 42, 5);
+	b = UNSTUFF_BITS(resp, 37, 5);
+	csd->erase_size = (a + 1) * (b + 1);
+	csd->erase_size <<= csd->write_blkbits;
 
 	return 0;
 }
@@ -160,6 +172,7 @@ static int mmc_read_ext_csd(struct mmc_card *card)
 {
 	int err;
 	u8 *ext_csd;
+	unsigned offs;
 
 	BUG_ON(!card);
 
@@ -206,11 +219,22 @@ static int mmc_read_ext_csd(struct mmc_card *card)
 		goto out;
 	}
 
+	/* Version is coded in the CSD_STRUCTURE byte in the EXT_CSD register */
+	if (card->csd.structure == 3) {
+		int ext_csd_struct = ext_csd[EXT_CSD_STRUCTURE];
+		if (ext_csd_struct > 2) {
+			printk(KERN_ERR "%s: unrecognised EXT_CSD structure "
+				"version %d\n", mmc_hostname(card->host),
+					ext_csd_struct);
+			err = -EINVAL;
+			goto out;
+		}
+	}
+
 	card->ext_csd.rev = ext_csd[EXT_CSD_REV];
-	if (card->ext_csd.rev > 3) {
-		printk(KERN_ERR "%s: unrecognised EXT_CSD structure "
-			"version %d\n", mmc_hostname(card->host),
-			card->ext_csd.rev);
+	if (card->ext_csd.rev > 5) {
+		printk(KERN_ERR "%s: unrecognised EXT_CSD revision %d\n",
+			mmc_hostname(card->host), card->ext_csd.rev);
 		err = -EINVAL;
 		goto out;
 	}
@@ -221,11 +245,21 @@ static int mmc_read_ext_csd(struct mmc_card *card)
 			ext_csd[EXT_CSD_SEC_CNT + 1] << 8 |
 			ext_csd[EXT_CSD_SEC_CNT + 2] << 16 |
 			ext_csd[EXT_CSD_SEC_CNT + 3] << 24;
-		if (card->ext_csd.sectors)
-			mmc_card_set_blockaddr(card);
+		if (card->ext_csd.sectors) {
+#ifdef CONFIG_EMBEDDED_MMC_START_OFFSET
+			offs = card->host->ops->get_host_offset(card->host);
+			offs >>= 9;
+			BUG_ON(offs > card->ext_csd.sectors);
+			card->ext_csd.sectors -= offs;
+#endif
+			offs = ext_csd[EXT_CSD_BOOT_SIZE_MULTI] * SZ_256K / 512;
+			card->ext_csd.sectors -= offs;
+
+		}
+
 	}
 
-	switch (ext_csd[EXT_CSD_CARD_TYPE]) {
+	switch (ext_csd[EXT_CSD_CARD_TYPE] & EXT_CSD_CARD_TYPE_MASK) {
 	case EXT_CSD_CARD_TYPE_52 | EXT_CSD_CARD_TYPE_26:
 		card->ext_csd.hs_max_dtr = 52000000;
 		break;
@@ -237,7 +271,6 @@ static int mmc_read_ext_csd(struct mmc_card *card)
 		printk(KERN_WARNING "%s: card is mmc v4 but doesn't "
 			"support any high-speed modes.\n",
 			mmc_hostname(card->host));
-		goto out;
 	}
 
 	if (card->ext_csd.rev >= 3) {
@@ -249,6 +282,15 @@ static int mmc_read_ext_csd(struct mmc_card *card)
 					1 << ext_csd[EXT_CSD_S_A_TIMEOUT];
 	}
 
+	if (card->ext_csd.rev >= 5) {
+		int i;
+		for (i = EXT_CSD_PWR_CL_52_195;
+		     i <= EXT_CSD_PWR_CL_26_360; i++)
+			card->ext_csd.power_class[MMC_EXT_CSD_PWR_CL(i)] =
+			                                           ext_csd[i];
+
+		card->ext_csd.rel_wr_sec_c = ext_csd[EXT_CSD_REL_WR_SEC_C];
+	}
 out:
 	kfree(ext_csd);
 
@@ -306,6 +348,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	int err;
 	u32 cid[4];
 	unsigned int max_dtr;
+	u32 rocr;
 
 	BUG_ON(!host);
 	WARN_ON(!host->claimed);
@@ -319,10 +362,9 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	mmc_go_idle(host);
 
 	/* The extra bit indicates that we support high capacity */
-	err = mmc_send_op_cond(host, ocr | (1 << 30), NULL);
+	err = mmc_send_op_cond(host, ocr | (1 << 30), &rocr);
 	if (err)
 		goto err;
-
 	/*
 	 * For SPI, enable CRC as appropriate.
 	 */
@@ -362,6 +404,13 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 		card->type = MMC_TYPE_MMC;
 		card->rca = 1;
 		memcpy(card->raw_cid, cid, sizeof(card->raw_cid));
+		/*
+		 * Set addressing mode of the card based on
+		 * access mode bit in OCR register
+		 */
+		if (rocr & MMC_CARD_ACCESS_MODE)
+			mmc_card_set_blockaddr(card);
+		host->card = card;
 	}
 
 	/*
@@ -458,6 +507,15 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 			bus_width = MMC_BUS_WIDTH_4;
 		}
 
+		err = mmc_set_power_class(host, max_dtr, bus_width);
+
+		if (err && err != -EBADMSG)
+			goto free_card;
+
+		/*
+		 * Some cards don't honor power class but will support wide
+		 * bus anyway.
+		 */
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				 EXT_CSD_BUS_WIDTH, ext_csd_bit);
 
@@ -474,14 +532,13 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 		}
 	}
 
-	if (!oldcard)
-		host->card = card;
 
 	return 0;
 
 free_card:
 	if (!oldcard)
 		mmc_remove_card(card);
+	host->card = NULL;
 err:
 
 	return err;

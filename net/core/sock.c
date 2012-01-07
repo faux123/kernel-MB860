@@ -276,6 +276,8 @@ int sock_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 {
 	int err = 0;
 	int skb_len;
+	unsigned long flags;
+	struct sk_buff_head *list = &sk->sk_receive_queue;
 
 	/* Cast sk->rcvbuf to unsigned... It's pointless, but reduces
 	   number of warnings when compiling with -W --ANK
@@ -305,7 +307,15 @@ int sock_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 	 */
 	skb_len = skb->len;
 
-	skb_queue_tail(&sk->sk_receive_queue, skb);
+	/* we escape from rcu protected region, make sure we dont leak
+	 * a norefcounted dst
+	 */
+	skb_dst_force(skb);
+
+	spin_lock_irqsave(&list->lock, flags);
+	skb->dropcount = atomic_read(&sk->sk_drops);
+	__skb_queue_tail(list, skb);
+	spin_unlock_irqrestore(&list->lock, flags);
 
 	if (!sock_flag(sk, SOCK_DEAD))
 		sk->sk_data_ready(sk, skb_len);
@@ -353,6 +363,7 @@ struct dst_entry *__sk_dst_check(struct sock *sk, u32 cookie)
 	struct dst_entry *dst = sk->sk_dst_cache;
 
 	if (dst && dst->obsolete && dst->ops->check(dst, cookie) == NULL) {
+		sk_tx_queue_clear(sk);
 		sk->sk_dst_cache = NULL;
 		dst_release(dst);
 		return NULL;
@@ -702,6 +713,12 @@ set_rcvbuf:
 
 		/* We implement the SO_SNDLOWAT etc to
 		   not be settable (1003.1g 5.3) */
+	case SO_RXQ_OVFL:
+		if (valbool)
+			sock_set_flag(sk, SOCK_RXQ_OVFL);
+		else
+			sock_reset_flag(sk, SOCK_RXQ_OVFL);
+		break;
 	default:
 		ret = -ENOPROTOOPT;
 		break;
@@ -901,6 +918,10 @@ int sock_getsockopt(struct socket *sock, int level, int optname,
 		v.val = sk->sk_mark;
 		break;
 
+	case SO_RXQ_OVFL:
+		v.val = !!sock_flag(sk, SOCK_RXQ_OVFL);
+		break;
+
 	default:
 		return -ENOPROTOOPT;
 	}
@@ -939,7 +960,8 @@ static void sock_copy(struct sock *nsk, const struct sock *osk)
 	void *sptr = nsk->sk_security;
 #endif
 	BUILD_BUG_ON(offsetof(struct sock, sk_copy_start) !=
-		     sizeof(osk->sk_node) + sizeof(osk->sk_refcnt));
+		     sizeof(osk->sk_node) + sizeof(osk->sk_refcnt) +
+		     sizeof(osk->sk_tx_queue_mapping));
 	memcpy(&nsk->sk_copy_start, &osk->sk_copy_start,
 	       osk->sk_prot->obj_size - offsetof(struct sock, sk_copy_start));
 #ifdef CONFIG_SECURITY_NETWORK
@@ -983,6 +1005,7 @@ static struct sock *sk_prot_alloc(struct proto *prot, gfp_t priority,
 
 		if (!try_module_get(prot->owner))
 			goto out_free_sec;
+		sk_tx_queue_clear(sk);
 	}
 
 	return sk;
@@ -1501,6 +1524,7 @@ static void __release_sock(struct sock *sk)
 		do {
 			struct sk_buff *next = skb->next;
 
+			WARN_ON_ONCE(skb_dst_is_noref(skb));
 			skb->next = NULL;
 			sk_backlog_rcv(sk, skb);
 
@@ -1779,7 +1803,7 @@ static void sock_def_readable(struct sock *sk, int len)
 {
 	read_lock(&sk->sk_callback_lock);
 	if (sk_has_sleeper(sk))
-		wake_up_interruptible_sync_poll(sk->sk_sleep, POLLIN |
+		wake_up_interruptible_sync_poll(sk->sk_sleep, POLLIN | POLLPRI |
 						POLLRDNORM | POLLRDBAND);
 	sk_wake_async(sk, SOCK_WAKE_WAITD, POLL_IN);
 	read_unlock(&sk->sk_callback_lock);

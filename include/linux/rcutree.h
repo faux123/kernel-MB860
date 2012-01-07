@@ -44,6 +44,7 @@ extern int rcu_expedited_torture_stats(char *page);
 extern void __rcu_read_lock(void);
 extern void __rcu_read_unlock(void);
 extern void exit_rcu(void);
+extern void synchronize_rcu(void);
 
 #else /* #ifdef CONFIG_TREE_PREEMPT_RCU */
 

@@ -1,7 +1,7 @@
 #include <linux/module.h>
 #include <linux/sched.h>
 #include <linux/stacktrace.h>
-
+#include <linux/cpumask.h>
 #include <asm/stacktrace.h>
 
 #if defined(CONFIG_FRAME_POINTER) && !defined(CONFIG_ARM_UNWIND)
@@ -28,7 +28,7 @@ int notrace unwind_frame(struct stackframe *frame)
 
 	/* only go to a higher address on the stack */
 	low = frame->sp;
-	high = ALIGN(low, THREAD_SIZE) + THREAD_SIZE;
+	high = ALIGN(low, THREAD_SIZE);
 
 	/* check current frame pointer is within bounds */
 	if (fp < (low + 12) || fp + 4 >= high)
@@ -97,7 +97,14 @@ void save_stack_trace_tsk(struct task_struct *tsk, struct stack_trace *trace)
 		 * What guarantees do we have here that 'tsk'
 		 * is not running on another CPU?
 		 */
+#ifdef CONFIG_MACH_MOT
+		if (cpu_online(1)) {
+			printk(KERN_INFO "save_stack_trace_tsk() called from unsafe SMP context\n");
+			return;
+		}
+#else
 		BUG();
+#endif
 #else
 		data.no_sched_functions = 1;
 		frame.fp = thread_saved_fp(tsk);

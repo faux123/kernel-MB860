@@ -87,6 +87,26 @@ config AT91SAM9X_WATCHDOG
 	  Watchdog timer embedded into AT91SAM9X and AT91CAP9 chips. This will
 	  reboot your system when the timeout is reached.
 
+config CPCAP_WATCHDOG
+	tristate "CPCAP watchdog"
+	depends on MFD_CPCAP
+	help
+	  Watchdog timer implemented on CPCAP PMIC. This will reboot your
+	  system when the timeout is reached.
+
+config CPCAP_WATCHDOG_KERNEL_SPACE
+	boolean "CPCAP watchdog kernel service"
+	depends on CPCAP_WATCHDOG
+	help
+	  Starts, services and stops CPCAP watchdog timer from kernel space
+
+config TEGRA_WATCHDOG_FIQ
+	bool "FIQ watchdog based on ap20 timer1"
+	depends on NON_NESTED_FIQ
+	default n
+	help
+	  Triggers kernel panic before watchdog resets.
+
 config 21285_WATCHDOG
 	tristate "DC21285 watchdog"
 	depends on FOOTBRIDGE
@@ -181,6 +201,17 @@ config MPCORE_WATCHDOG
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called mpcore_wdt.
+
+config TEGRA_WATCHDOG
+	tristate "Tegra watchdog"
+	depends on ARCH_TEGRA
+	help
+	  Say Y here to include support for the watchdog timer
+	  embedded in NVIDIA Tegra SoCs.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called tegra_wdt.
+
 
 config EP93XX_WATCHDOG
 	tristate "EP93xx Watchdog"

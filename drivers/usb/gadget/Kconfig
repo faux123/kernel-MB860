@@ -505,6 +505,24 @@ config USB_LANGWELL
 	select USB_GADGET_SELECTED
 
 
+config USB_GADGET_TEGRA
+	boolean "NVIDIA Tegra USB Device Port"
+	depends on ARCH_TEGRA
+	select USB_GADGET_DUALSPEED
+	help
+	   Enables USB device functionality using the internal USB controller
+	   on NVIDIA Tegra SoCs
+
+	   Say "y" to link the driver statically, or "m" to build a
+	   dynamically linked module called "goku_udc" and to force all
+	   gadget drivers to also be dynamically linked.
+
+config USB_TEGRA
+	tristate
+	depends on USB_GADGET_TEGRA
+	default USB_GADGET
+	select USB_GADGET_SELECTED
+
 #
 # LAST -- dummy/emulated controller
 #
@@ -780,6 +798,47 @@ config USB_G_PRINTER
 	  For more information, see Documentation/usb/gadget_printer.txt
 	  which includes sample code for accessing the device file.
 
+config USB_MOT_ANDROID
+        tristate "MOTO Android Gadget"
+        help
+          The MOTO Android gadget provides mass storage, adb and ethernet transport.
+
+          Say "y" to link the driver statically, or "m" to build a
+          dynamically linked module called "g_mot_android".
+
+config USB_MOT_MSC_CDROM
+	boolean "support CDROM on MSC"
+	depends on USB_MOT_ANDROID
+	help
+	  Provides MSC+CDROM support for usb gadget driver
+
+config USB_ANDROID
+	boolean "Android Gadget"
+	depends on SWITCH
+	help
+	  The Android gadget driver supports multiple USB functions.
+	  The functions can be configured via a board file and may be
+	  enabled and disabled dynamically.
+
+config USB_ANDROID_ACM
+	boolean "Android gadget ACM serial function"
+	depends on USB_ANDROID
+	help
+	  Provides ACM serial function for android gadget driver.
+
+config USB_ANDROID_ADB
+	boolean "Android gadget adb function"
+	depends on USB_ANDROID
+	help
+	  Provides adb function for android gadget driver.
+
+config USB_ANDROID_MASS_STORAGE
+	boolean "Android gadget mass storage function"
+	depends on USB_ANDROID && SWITCH
+	help
+	  Provides USB mass storage function for android gadget driver.
+
+
 config USB_CDC_COMPOSITE
 	tristate "CDC Composite Device (Ethernet and ACM)"
 	depends on NET
@@ -800,5 +859,30 @@ config USB_CDC_COMPOSITE
 # - none yet
 
 endchoice
+
+config USB_ANDROID_RNDIS
+	boolean "Android gadget RNDIS ethernet function"
+	depends on USB_MOT_ANDROID
+	default n
+	help
+	  Provides RNDIS ethernet function for android gadget driver.
+
+config USB_ANDROID_RNDIS_WCEIS
+        boolean "Use Windows Internet Sharing Class/SubClass/Protocol"
+	depends on USB_ANDROID_RNDIS
+	default n
+        help
+         Causes the driver to look like a Windows-compatible Internet
+         Sharing device, so Windows auto-detects it.
+
+         If you enable this option, the device is no longer CDC ethernet
+         compatible.
+
+config USB_ANDROID_PVMTP
+	boolean "Android gadget pv mtp function"
+	depends on USB_MOT_ANDROID
+	default n
+	help
+	  Provides pv mtp function for android gadget driver, otherwise normal mtp function.
 
 endif # USB_GADGET

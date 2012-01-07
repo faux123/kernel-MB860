@@ -226,15 +226,16 @@ ENTRY(xsc3_coherent_user_range)
 	mov	pc, lr
 
 /*
- *	flush_kern_dcache_page(void *page)
+ *	flush_kern_dcache_area(void *addr, size_t size)
  *
  *	Ensure no D cache aliasing occurs, either with itself or
  *	the I cache.
  *
- *	- addr	- page aligned address
+ *	- addr	- kernel address
+ *	- size	- region size
  */
-ENTRY(xsc3_flush_kern_dcache_page)
-	add	r1, r0, #PAGE_SZ
+ENTRY(xsc3_flush_kern_dcache_area)
+	add	r1, r0, r1
 1:	mcr	p15, 0, r0, c7, c14, 1		@ clean/invalidate L1 D line
 	add	r0, r0, #CACHELINESIZE
 	cmp	r0, r1
@@ -303,13 +304,39 @@ ENTRY(xsc3_dma_flush_range)
 	mcr	p15, 0, r0, c7, c10, 4		@ data write barrier
 	mov	pc, lr
 
+/*
+ *	dma_map_area(start, size, dir)
+ *	- start	- kernel virtual start address
+ *	- size	- size of region
+ *	- dir	- DMA direction
+ */
+ENTRY(xsc3_dma_map_area)
+	add	r1, r1, r0
+	cmp	r2, #DMA_TO_DEVICE
+	beq	xsc3_dma_clean_range
+	bcs	xsc3_dma_inv_range
+	b	xsc3_dma_flush_range
+ENDPROC(xsc3_dma_map_area)
+
+/*
+ *	dma_unmap_area(start, size, dir)
+ *	- start	- kernel virtual start address
+ *	- size	- size of region
+ *	- dir	- DMA direction
+ */
+ENTRY(xsc3_dma_unmap_area)
+	mov	pc, lr
+ENDPROC(xsc3_dma_unmap_area)
+
 ENTRY(xsc3_cache_fns)
 	.long	xsc3_flush_kern_cache_all
 	.long	xsc3_flush_user_cache_all
 	.long	xsc3_flush_user_cache_range
 	.long	xsc3_coherent_kern_range
 	.long	xsc3_coherent_user_range
-	.long	xsc3_flush_kern_dcache_page
+	.long	xsc3_flush_kern_dcache_area
+	.long	xsc3_dma_map_area
+	.long	xsc3_dma_unmap_area
 	.long	xsc3_dma_inv_range
 	.long	xsc3_dma_clean_range
 	.long	xsc3_dma_flush_range
@@ -352,7 +379,7 @@ cpu_xsc3_mt_table:
 	.long	PTE_EXT_TEX(5) | PTE_CACHEABLE			@ L_PTE_MT_WRITETHROUGH
 	.long	PTE_CACHEABLE | PTE_BUFFERABLE			@ L_PTE_MT_WRITEBACK
 	.long	PTE_EXT_TEX(1) | PTE_BUFFERABLE			@ L_PTE_MT_DEV_SHARED
-	.long	0x00						@ unused
+	.long	PTE_EXT_TEX(4) | PTE_BUFFERABLE			@ L_PTE_MT_INNER_WB (not present?)
 	.long	0x00						@ L_PTE_MT_MINICACHE (not present)
 	.long	PTE_EXT_TEX(5) | PTE_CACHEABLE | PTE_BUFFERABLE	@ L_PTE_MT_WRITEALLOC (not present?)
 	.long	0x00						@ unused

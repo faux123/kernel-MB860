@@ -77,6 +77,14 @@ enum {
 	IRQTF_AFFINITY,
 };
 
+typedef int fiqreturn_t;
+
+typedef fiqreturn_t (*fiq_handler_t)(struct pt_regs *);
+
+#ifdef CONFIG_NON_NESTED_FIQ
+void set_fiq_handler(fiq_handler_t fiq_handler);
+#endif
+
 typedef irqreturn_t (*irq_handler_t)(int, void *);
 
 /**

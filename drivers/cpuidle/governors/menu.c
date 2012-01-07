@@ -206,7 +206,11 @@ static int menu_select(struct cpuidle_device *dev)
 
 	data->bucket = which_bucket(data->expected_us);
 
+#ifdef CONFIG_MACH_MOT
+	multiplier = 1;
+#else
 	multiplier = performance_multiplier();
+#endif
 
 	/*
 	 * if the correction factor is 0 (eg first time init or cpu hotplug

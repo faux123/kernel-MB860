@@ -15,6 +15,10 @@
 #define BAD_IRQ		3
 #define BAD_UNDEFINSTR	4
 
+#ifdef CONFIG_NON_NESTED_FIQ
+#define BAD_FIQ		5
+#endif
+
 @
 @ Most of the stack format comes from struct pt_regs, but with
 @ the addition of 8 bytes for storing syscall args 5 and 6.
