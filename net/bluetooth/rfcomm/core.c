@@ -1866,7 +1866,6 @@ static inline void rfcomm_process_sessions(void)
 		struct rfcomm_session *s;
 		s = list_entry(p, struct rfcomm_session, list);
 
-			rfcomm_session_put(s);
 		if (s->state == BT_LISTEN) {
 			rfcomm_accept_connection(s);
 			continue;
