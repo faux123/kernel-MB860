@@ -799,41 +799,55 @@ static void __init tegra_mot_init(void)
 static void __init mot_fixup(struct machine_desc *desc, struct tag *tags,
                  char **cmdline, struct meminfo *mi)
 {
-    struct tag *t;
+	struct tag *t;
 	int i;
 
-    /* 
-	 *	Dump some key ATAGs
-     */
-    for (t=tags; t->hdr.size; t = tag_next(t)) {
-        if (t->hdr.tag == ATAG_CMDLINE) {
+	/*
+	 * Dump some key ATAGs
+	 */
+	for (t=tags; t->hdr.size; t = tag_next(t)) {
+		switch (t->hdr.tag) {
+		case ATAG_WLAN_MAC:        // 57464d41 parsed in board-mot-wlan.c
+		case ATAG_BLDEBUG:         // 41000811 same, in board-mot-misc.c
+		case ATAG_POWERUP_REASON:  // F1000401 ex: 0x4000, parsed after... ignore
+			break;
+		case ATAG_CORE:     // 54410001
+			printk("%s: atag_core pagesize=%d.\n", __func__, t->u.core.pagesize);
+			break;
+		case ATAG_CMDLINE:
 			printk("%s: atag_cmdline=\"%s\"\n", __func__, t->u.cmdline.cmdline);
-        }
-        else if (t->hdr.tag == ATAG_REVISION) {
-			printk("%s: atag_revision=%x\n", __func__, t->u.revision.rev);
-        }
-        else if (t->hdr.tag == ATAG_SERIAL) {
-			printk("%s: atag_serial=%x%x\n", __func__, t->u.serialnr.low, t->u.serialnr.high );
-		}
-        else if (t->hdr.tag == ATAG_MEM) {
-            printk("%s: atag_mem.start=%d, atag_mem.size=%d\n", __func__, t->u.mem.start, t->u.mem.size);
-        }
-        else if (t->hdr.tag == ATAG_BLDEBUG) {
-            printk("%s: powerup reason regs: INTS1=0x%4.4x  INT2=0x%4.4x  INTS2=0x%4.4x INT3=0x%4.4x  "
-                   "PC2=0x%4.4x MEMA=0x%4.4x  ACCY=%d  UBOOT=%d\n", __func__, t->u.bldebug.ints1,
-                   t->u.bldebug.int2, t->u.bldebug.ints2, t->u.bldebug.int3, t->u.bldebug.pc2,
-                   t->u.bldebug.mema, t->u.bldebug.accy, t->u.bldebug.uboot);
-        }
-		else {
+			break;
+		case ATAG_REVISION: // 54410007
+			printk("%s: atag_revision=0x%x\n", __func__, t->u.revision.rev);
+			break;
+		case ATAG_SERIAL:   // 54410006
+			printk("%s: atag_serial=%x%x\n", __func__, t->u.serialnr.low, t->u.serialnr.high);
+			break;
+		case ATAG_INITRD2:  // 54420005
+			printk("%s: atag_initrd2=0x%x/%x\n", __func__, t->u.initrd.start, t->u.initrd.size);
+			break;
+		case ATAG_MEM:
+			printk("%s: atag_mem.start=0x%x, mem.size=%d\n", __func__, t->u.mem.start, t->u.mem.size);
+			break;
+#ifdef CONFIG_MACH_MOT
+		case ATAG_MOTOROLA: // 41000810
+			printk("%s: atag_moto allow_fb=%d\n", __func__, t->u.motorola.allow_fb_open);
+			break;
+#endif
+		case ATAG_NVIDIA_TEGRA: // 41000801
+			printk("%s: atag_tegra=0x%X (len=%d.)\n", __func__,
+				t->u.tegra.bootarg_key, t->u.tegra.bootarg_len);
+			break;
+		default:
 			printk("%s: ATAG %X\n", __func__, t->hdr.tag);
 		}
-    }
+	}
 
-    /* 
-	 *	Dump memory nodes
-     */
+	/*
+	 * Dump memory nodes
+	 */
 	for (i=0; i<mi->nr_banks; i++) {
-	    printk("%s: bank[%d]=%lx@%lx\n", __func__, i, mi->bank[i].size, mi->bank[i].start);
+		printk("%s: bank[%d]=%lx@%lx\n", __func__, i, mi->bank[i].size, mi->bank[i].start);
 	}
 }
 

@@ -289,6 +289,19 @@ static int __init parse_tag_motorola(const struct tag *tag)
 __tagtable(ATAG_MOTOROLA, parse_tag_motorola);
 
 /*
+ * Parse the Motorola boot loader ATAG 41000811
+ */
+static int __init parse_tag_bldebug(const struct tag *t)
+{
+	pr_info("%s: powerup reason regs: INTS1=0x%4.4x INT2=0x%4.4x INTS2=0x%4.4x INT3=0x%4.4x "
+		"PC2=0x%4.4x MEMA=0x%4.4x ACCY=%d UBOOT=%d\n", __func__, t->u.bldebug.ints1,
+		t->u.bldebug.int2, t->u.bldebug.ints2, t->u.bldebug.int3, t->u.bldebug.pc2,
+		t->u.bldebug.mema, t->u.bldebug.accy, t->u.bldebug.uboot);
+	return 0;
+}
+__tagtable(ATAG_BLDEBUG, parse_tag_bldebug);
+
+/*
  *   UTS tool needs to emulate numbers keys and send/end keys. Add them to tegra kbc driver keymap 
  */
 
