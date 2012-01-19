@@ -186,6 +186,10 @@ config INPUT_MOT_WEBTOP
 
 	  To compile this driver as a module, choose M here
 
+config MOT_ALLOW_FB_OPEN
+	boolean "Allow framebuffer open regardless of hardware info"
+	default n
+
 config TEGRA_USB_VBUS_DETECT_BY_PMU
 	boolean "VBUS detection by PMU"
 	help
