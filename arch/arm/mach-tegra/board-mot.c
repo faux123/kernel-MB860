@@ -66,6 +66,13 @@
 #include "board-mot.h"
 #include "nvrm_power.h"
 
+// override default moto kernel rule and bootloader console=null
+#ifdef CONFIG_MOT_SERIAL_JACK
+#define ENABLE_JACK_UART 1
+#else
+#define ENABLE_JACK_UART 0
+#endif
+
 static char oly_unused_pins_p3[] = {
         TEGRA_GPIO_PO1,
         TEGRA_GPIO_PO2,
@@ -735,7 +742,7 @@ static void __init tegra_mot_init(void)
 		/* console UART can be routed to 'headset jack by setting HSJ mux to 0*/
 		short hsj_mux_gpio=1;
 
-		if ( HWREV_TYPE_IS_DEBUG(system_rev) ){
+		if ( HWREV_TYPE_IS_DEBUG(system_rev) || ENABLE_JACK_UART ){
 			printk("%s: Enabling console on headset jack\n", __FUNCTION__);
 			hsj_mux_gpio=0;
 		}
