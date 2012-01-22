@@ -682,7 +682,7 @@ __tagtable(ATAG_CMDLINE, parse_tag_cmdline);
 static int __init parse_tag_powerup_reason(const struct tag *tag)
 {
 	bi_set_powerup_reason(tag->u.powerup_reason.powerup_reason);
-	printk(KERN_ERR "%s: powerup reason=0x%08x\n",
+	printk(KERN_INFO "%s: powerup reason=0x%08x\n",
 				__func__, bi_powerup_reason());
 	return 0;
 }
