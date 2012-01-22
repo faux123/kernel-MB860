@@ -111,7 +111,7 @@ static char oly_unused_pins_p3[] = {
         TEGRA_GPIO_PQ5,
         TEGRA_GPIO_PBB0,
         TEGRA_GPIO_PZ5,
-        TEGRA_GPIO_PK5,
+        /* TEGRA_GPIO_PK5, AKM8975_RESET_GPIO */
         TEGRA_GPIO_PK6,
         TEGRA_GPIO_PW5,
         TEGRA_GPIO_PD3,
