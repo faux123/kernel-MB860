@@ -9872,6 +9872,7 @@ void __init sched_init(void)
 #ifdef CONFIG_NO_HZ
 	zalloc_cpumask_var(&nohz.cpu_mask, GFP_NOWAIT);
 	alloc_cpumask_var(&nohz.ilb_grp_nohz_mask, GFP_NOWAIT);
+	nohz.next_balance = jiffies;
 #endif
 	/* May be allocated at isolcpus cmdline parse time */
 	if (cpu_isolated_map == NULL)
