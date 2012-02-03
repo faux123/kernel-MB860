@@ -386,7 +386,7 @@ static int vfp_pm_suspend(struct sys_device *dev, pm_message_t state)
 		vfp_save_state(&ti->vfpstate, fpexc);
 
 		/* disable, just in case */
-		fmxr(FPEXC, fmrx(FPEXC) & ~FPEXC_EN);
+		fmxr(FPEXC, fpexc & ~FPEXC_EN);
 	}
 
 	/* clear any information we had about last context state */
