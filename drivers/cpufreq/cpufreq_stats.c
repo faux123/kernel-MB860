@@ -122,7 +122,7 @@ static ssize_t show_trans_table(struct cpufreq_policy *policy, char *buf)
 	struct cpufreq_stats *stat;
 	spinlock_t *lock;
 
-	lock = &per_cpu(cpufreq_stats_lock, policy->cpu)
+	lock = &per_cpu(cpufreq_stats_lock, policy->cpu);
 	spin_lock(lock);
 	stat = per_cpu(cpufreq_stats_table, policy->cpu);
 	if (!stat) {

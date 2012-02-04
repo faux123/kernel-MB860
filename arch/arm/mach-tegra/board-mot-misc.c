@@ -258,20 +258,24 @@ static int __init parse_tag_motorola(const struct tag *tag)
 
     s_MotorolaDispInfo = moto_tag->panel_size;
     s_MotorolaFBInfo = moto_tag->allow_fb_open;
-    
+
+    #ifdef CONFIG_MOT_ALLOW_FB_OPEN
+    s_MotorolaFBInfo = 1; // allow fb open for charger and bootmenu (minui)
+    #endif
+
     mot_sec_platform_data.fl_factory = moto_tag->in_factory;
 
     bootloader_ver_major = moto_tag->bl_ver_major;
     bootloader_ver_minor = moto_tag->bl_ver_minor;
     uboot_ver_major = moto_tag->uboot_ver_major;
     uboot_ver_minor = moto_tag->uboot_ver_minor;
-	bi_set_cid_recover_boot(moto_tag->cid_suspend_boot);
+    bi_set_cid_recover_boot(moto_tag->cid_suspend_boot);
 
-    pr_info("%s: panel_size: %x\n", __func__, s_MotorolaDispInfo);
+    pr_info("%s: bootloader v%d.%d\n", __func__, bootloader_ver_major, bootloader_ver_minor);
+    pr_info("%s: panel_size: 0x%x\n", __func__, s_MotorolaDispInfo);
     pr_info("%s: allow_fb_open: %x\n", __func__, s_MotorolaFBInfo);
     pr_info("%s: factory: %d\n", __func__, mot_sec_platform_data.fl_factory);
-    pr_info("%s: cid_suspend_boot: %u\n", __func__,
-				(unsigned)moto_tag->cid_suspend_boot);
+    pr_info("%s: cid_suspend_boot: %u\n", __func__, (unsigned)moto_tag->cid_suspend_boot);
 
     /*
      *	Dump memory information
@@ -287,6 +291,19 @@ static int __init parse_tag_motorola(const struct tag *tag)
     return 0;
 }
 __tagtable(ATAG_MOTOROLA, parse_tag_motorola);
+
+/*
+ * Parse the Motorola boot loader ATAG 41000811
+ */
+static int __init parse_tag_bldebug(const struct tag *t)
+{
+	pr_info("%s: powerup reason regs: INTS1=0x%4.4x INT2=0x%4.4x INTS2=0x%4.4x INT3=0x%4.4x "
+		"PC2=0x%4.4x MEMA=0x%4.4x ACCY=%d UBOOT=%d\n", __func__, t->u.bldebug.ints1,
+		t->u.bldebug.int2, t->u.bldebug.ints2, t->u.bldebug.int3, t->u.bldebug.pc2,
+		t->u.bldebug.mema, t->u.bldebug.accy, t->u.bldebug.uboot);
+	return 0;
+}
+__tagtable(ATAG_BLDEBUG, parse_tag_bldebug);
 
 /*
  *   UTS tool needs to emulate numbers keys and send/end keys. Add them to tegra kbc driver keymap 

@@ -59,6 +59,9 @@ include/linux/utsrelease.h
 include/linux/bounds.h
 include/generated
 
+# generated .S
+arch/arm/boot/compressed/lib1funcs.S
+
 # stgit generated dirs
 patches-*
 
