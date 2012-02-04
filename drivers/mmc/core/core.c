@@ -1418,7 +1418,6 @@ int mmc_resume_host(struct mmc_host *host)
 	 * in parallel.
 	 */
 	mmc_detect_change(host, 1);
-		mmc_claim_host(host);
 
 	return err;
 }
