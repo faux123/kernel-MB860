@@ -2802,7 +2802,7 @@ NvRmSpiOpen(
 
     *phRmSpi = NULL;
 
-    pr_err("NvRmSpiOpen() Opening channel Inst %d and IsMaster %d\n",InstanceId, IsMasterMode);
+    pr_notice("NvRmSpiOpen() Opening channel Inst %d and IsMaster %d\n",InstanceId, IsMasterMode);
     IsSpiChannel = (IoModule == NvOdmIoModule_Sflash)? NV_TRUE: NV_FALSE;
 
     // SPI controller does not support the slave mode

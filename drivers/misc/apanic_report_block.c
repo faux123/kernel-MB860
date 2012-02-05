@@ -320,7 +320,7 @@ static int apanic_trigger_check(struct file *file, const char __user *devpath,
 	wait_for_completion(&complete);
 
 	blkdev_put(bdev, FMODE_READ);
-	printk(KERN_ERR DRVNAME "using block device '%s'\n", devpath);
+	printk(KERN_NOTICE DRVNAME "using block device '%s'\n", devpath);
 
 	if (hdr->magic != PANIC_MAGIC) {
 		printk(KERN_INFO DRVNAME "no panic data available\n");
