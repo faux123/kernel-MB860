@@ -1713,7 +1713,7 @@ static int __init parse_tegra_tag(const struct tag *tag)
             (const NvBootArgsPreservedMemHandle *)nvtag->bootarg;
 
         if (nvtag->bootarg_len != sizeof(NvBootArgsPreservedMemHandle))
-            printk("Unexpected preserved memory handle tag length!\n");
+            pr_err("Unexpected preserved memory handle tag length!\n");
         else
             *dst = *src;
         return 0;
@@ -1728,11 +1728,10 @@ static int __init parse_tegra_tag(const struct tag *tag)
             (const NvBootArgsChipShmoo *)nvtag->bootarg;
 
         if (nvtag->bootarg_len != sizeof(NvBootArgsChipShmoo))
-            printk("Unexpected shmoo tag length!\n");
+            pr_err("Unexpected shmoo tag length!\n");
         else
         {
-            printk("Shmoo tag with %u handle\n",
-                   src->MemHandleKey);
+            pr_info("Shmoo tag with handle 0x%x\n", src->MemHandleKey);
             *dst = *src;
         }
         return 0;
@@ -1744,7 +1743,7 @@ static int __init parse_tegra_tag(const struct tag *tag)
             (const NvBootArgsDisplay *)nvtag->bootarg;
 
         if (nvtag->bootarg_len != sizeof(NvBootArgsDisplay))
-            printk("Unexpected display tag length!\n");
+            pr_err("Unexpected display tag length!\n");
         else
             *dst = *src;
         return 0;
@@ -1756,11 +1755,10 @@ static int __init parse_tegra_tag(const struct tag *tag)
             (const NvBootArgsFramebuffer *)nvtag->bootarg;
 
         if (nvtag->bootarg_len != sizeof(NvBootArgsFramebuffer))
-            printk("Unexpected framebuffer tag length!\n");
+            pr_err("Unexpected framebuffer tag length!\n");
         else
         {
-            printk("Framebuffer tag with %u handle\n",
-                   src->MemHandleKey);
+            pr_info("Framebuffer tag with handle 0x%x\n", src->MemHandleKey);
             *dst = *src;
         }
         return 0;
@@ -1772,7 +1770,7 @@ static int __init parse_tegra_tag(const struct tag *tag)
             (const NvBootArgsRm *)nvtag->bootarg;
 
         if (nvtag->bootarg_len != sizeof(NvBootArgsRm))
-            printk("Unexpected RM tag length!\n");
+            pr_err("Unexpected RM tag length!\n");
         else
             *dst = *src;
         return 0;
@@ -1784,10 +1782,10 @@ static int __init parse_tegra_tag(const struct tag *tag)
             (const NvBootArgsChipShmooPhys *)nvtag->bootarg;
 
         if (nvtag->bootarg_len != sizeof(NvBootArgsChipShmooPhys))
-            printk("Unexpected phys shmoo tag length!\n");
+            pr_err("Unexpected phys shmoo tag length!\n");
         else
         {
-            printk("Phys shmoo tag with pointer 0x%X and length %u\n",
+            pr_info("Phys shmoo tag with pointer 0x%X and length %u\n",
                    src->PhysShmooPtr, src->Size);
             *dst = *src;
         }
@@ -1800,10 +1798,10 @@ static int __init parse_tegra_tag(const struct tag *tag)
             (const NvBootArgsWarmboot *)nvtag->bootarg;
 
         if (nvtag->bootarg_len != sizeof(NvBootArgsWarmboot))
-            printk("Unexpected warmboot tag length!\n");
+            pr_err("Unexpected warmboot tag length!\n");
         else
         {
-            printk("Found a warmboot tag!\n");
+            pr_info("Found a warmboot tag!\n");
             *dst = *src;
         }
         return 0;
