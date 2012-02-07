@@ -159,6 +159,16 @@ config MACH_MOT
 	default n
 	bool "Motorola AP20 Products"
 
+config WIFI_CONTROL_EXPORT
+	bool "Export wlan ctrl functions and IRQ for the DHD kernel module"
+	depends on MACH_MOT
+	default n
+	help
+	  There are two methods to toggle the wifi on/off,
+	  exports these 3 functions : bcm_wlan_power_off/on bcm_wlan_get_irq
+	  The other method is WIFI_CONTROL_FUNC which use
+	  wifi_set_carddetect, wifi_set_power and wifi_get_irq_number
+
 config MOT_TIMER_FIQ_DEBUG_LOCKUP
 	depends on FIQ
 	default n
