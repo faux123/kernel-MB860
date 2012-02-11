@@ -183,7 +183,7 @@ static int cpcap_wdt_start(struct cpcap_wdt *wdt)
 
 	/* primary macro14 is the main watchdog process */
 	retval = cpcap_uc_start(wdt->cpcap, CPCAP_BANK_PRIMARY, CPCAP_MACRO_14);
-	dev_err (wdt->dev, "%s(): %d\n", __func__, retval);
+	dev_notice(wdt->dev, "%s(): %d\n", __func__, retval);
 	return (retval);
 }
 
@@ -202,7 +202,7 @@ static int cpcap_wdt_stop(struct cpcap_wdt *wdt)
 	clear_bit(0, &wdt->is_active);
 
 	retval = cpcap_uc_stop(wdt->cpcap, CPCAP_BANK_PRIMARY, CPCAP_MACRO_14);
-	dev_err (wdt->dev, "%s(): %d\n", __func__, retval);
+	dev_notice(wdt->dev, "%s(): %d\n", __func__, retval);
 	return (cpcap_uc_stop(wdt->cpcap, CPCAP_BANK_PRIMARY, CPCAP_MACRO_14));
 }
 
@@ -444,9 +444,9 @@ static int __devinit cpcap_wdt_probe(struct platform_device *pdev)
 		dev_err(wdt->dev, "cannot start watchdog task\n");
 		goto err_reg;
 	}
-	dev_err(&pdev->dev, "Watchdog started from kernel\n");
+	dev_notice(&pdev->dev, "Watchdog started from kernel\n");
 #else
-	dev_err(&pdev->dev, "Watchdog framework started for user space control\n");
+	dev_notice(&pdev->dev, "Watchdog framework started for user space control\n");
 #endif
 
 	return 0;

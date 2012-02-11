@@ -304,6 +304,7 @@ void cpcap_accy_set_dock_switch(struct cpcap_device *cpcap, int state, bool is_h
 				break;
 			case MOBILE_DOCK:
 				switch_set_state(&data->edsdev, EXT_MOBILE_DOCK);
+				switch_set_state(&data->dsdev, DESK_DOCK);
 				data->hall_effect_connected = is_hall_effect;
 				break;
 			default:
