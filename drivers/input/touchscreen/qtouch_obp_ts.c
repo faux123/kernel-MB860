@@ -43,6 +43,9 @@
 #define	USE_NVODM_STUFF	1
 */
 
+// Unsupported on .32
+#define ABS_MT_PRESSURE    0x3a
+
 #ifdef USE_NVODM_STUFF
 
 #define	NV_DEBUG	1
@@ -1328,9 +1331,9 @@ static int do_touch_multi_msg(struct qtouch_ts_data *ts, struct qtm_object *obj,
 					continue;
 				if ( !ts->suspendMode )
 				{
-					input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR,
+					input_report_abs(ts->input_dev, ABS_MT_PRESSURE,
 							 ts->finger_data[i].z_data);
-					input_report_abs(ts->input_dev, ABS_MT_WIDTH_MAJOR,
+					input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR,
 							 ts->finger_data[i].w_data);
 					input_report_abs(ts->input_dev, ABS_MT_POSITION_X,
 							 ts->finger_data[i].x_data);
@@ -1388,8 +1391,8 @@ static int do_touch_multi_msg(struct qtouch_ts_data *ts, struct qtm_object *obj,
 			{
 				if ( !ts->suspendMode )
 				{
-					input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0);
-					input_report_abs(ts->input_dev, ABS_MT_WIDTH_MAJOR,
+					input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0);
+					input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR,
 							 ts->prev_finger_data[i].w_data);
 					input_report_abs(ts->input_dev, ABS_MT_POSITION_X,
 							 ts->prev_finger_data[i].x_data);
@@ -1440,9 +1443,9 @@ static int do_touch_multi_msg(struct qtouch_ts_data *ts, struct qtm_object *obj,
 	{
 		if (!ts->suspendMode)
 		{
-			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR,
+			input_report_abs(ts->input_dev, ABS_MT_PRESSURE,
 					 0);
-			input_report_abs(ts->input_dev, ABS_MT_WIDTH_MAJOR,
+			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR,
 					 ts->finger_data[1].w_data);
 			input_report_abs(ts->input_dev, ABS_MT_POSITION_X,
 					 ts->finger_data[1].x_data);
@@ -1489,12 +1492,12 @@ static int do_touch_keyarray_msg(struct qtouch_ts_data *ts,
 			if (msg->keystate & bit) {
 				if (ignore_keyarray_touches)
 					return 0;
-				input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 4);
+				input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 4);
 			} else {
 				input_report_abs(ts->input_dev,
-						 ABS_MT_TOUCH_MAJOR, 0);
+						 ABS_MT_PRESSURE, 0);
 			}
-			input_report_abs(ts->input_dev, ABS_MT_WIDTH_MAJOR, 4);
+			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 4);
 			input_report_abs(ts->input_dev, ABS_MT_POSITION_X,
 					 ts->pdata->key_array.keys[i].x_coord);
 			input_report_abs(ts->input_dev, ABS_MT_POSITION_Y,
@@ -2249,10 +2252,10 @@ static int qtouch_ts_probe(struct i2c_client *client,
 			input_set_abs_params(ts->input_dev, ABS_MT_POSITION_Y,
 				pdata->abs_min_y, pdata->abs_max_y,
 				pdata->fuzz_y, 0);
-			input_set_abs_params(ts->input_dev, ABS_MT_TOUCH_MAJOR,
+			input_set_abs_params(ts->input_dev, ABS_MT_PRESSURE,
 				pdata->abs_min_p, pdata->abs_max_p,
 				pdata->fuzz_p, 0);
-			input_set_abs_params(ts->input_dev, ABS_MT_WIDTH_MAJOR,
+			input_set_abs_params(ts->input_dev, ABS_MT_TOUCH_MAJOR,
 				pdata->abs_min_w, pdata->abs_max_w,
 				pdata->fuzz_w, 0);
 			input_set_capability(ts->input_dev, EV_KEY, BTN_TOUCH);
@@ -2513,7 +2516,7 @@ static int qtouch_ts_resume(struct i2c_client *client)
 			__func__, i, ts->finger_data[i].down);
 		if (ts->finger_data[i].down == 0)
 			continue;
-		input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0);
+		input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0);
 		input_mt_sync(ts->input_dev);
 		memset(&ts->finger_data[i], 0,
 			sizeof(struct coordinate_map));
