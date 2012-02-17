@@ -414,7 +414,11 @@ static int cpcap_batt_get_property(struct power_supply *psy,
 		break;
 
 	case POWER_SUPPLY_PROP_CAPACITY:
-		val->intval = sply->batt_state.batt_capacity_one;
+	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
+		if (sply->batt_state.batt_capacity_one > 100)
+			val->intval = 100;
+		else
+			val->intval = sply->batt_state.batt_capacity_one;
 		break;
 
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
@@ -427,10 +431,6 @@ static int cpcap_batt_get_property(struct power_supply *psy,
 
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
 		val->intval = sply->batt_state.batt_full_capacity;
-		break;
-
-	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
-		val->intval = sply->batt_state.batt_capacity_one;
 		break;
 
 	default:
