@@ -259,7 +259,7 @@ static int tegra_i2c_probe(struct platform_device *pdev)
 		i2c_bus->i2c_dev = i2c_dev;
 		i2c_bus->pinmux = plat->bus_mux[i];
 		i2c_bus->rate = plat->bus_clk[i];
-		i2c_bus->bus_lock = &i2c_dev->busses[0].adapter.bus_lock;
+		i2c_bus->bus_lock = &i2c_dev->busses[i].adapter.bus_lock;
 
 		i2c_bus->adapter.algo = &tegra_i2c_algo;
 		i2c_set_adapdata(&i2c_bus->adapter, i2c_bus);

@@ -1528,10 +1528,22 @@ out:
  */
 int ecryptfs_read_xattr_region(char *page_virt, struct inode *ecryptfs_inode)
 {
-	struct dentry *lower_dentry =
-		ecryptfs_inode_to_private(ecryptfs_inode)->lower_file->f_dentry;
+	struct ecryptfs_inode_info *inode_info =
+		ecryptfs_inode_to_private(ecryptfs_inode);
+	struct dentry *lower_dentry = NULL;
 	ssize_t size;
 	int rc = 0;
+
+	mutex_lock(&inode_info->lower_file_mutex);
+	if (!inode_info->lower_file) {
+		printk(KERN_INFO "Found null lower_file in read_xattr\n");
+		mutex_unlock(&inode_info->lower_file_mutex);
+		return -EINVAL;
+	}
+
+	lower_dentry = inode_info->lower_file->f_dentry;
+
+	mutex_unlock(&inode_info->lower_file_mutex);
 
 	size = ecryptfs_getxattr_lower(lower_dentry, ECRYPTFS_XATTR_NAME,
 				       page_virt, ECRYPTFS_DEFAULT_EXTENT_SIZE);
