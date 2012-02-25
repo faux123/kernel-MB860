@@ -1468,12 +1468,15 @@ static int aes1750_suspend(struct spi_device *spi, pm_message_t mesg)
 
 	aes1750_info("%d:%d\n", current->pid, current->tgid);
 
+	/* Set is_suspended to 1 and notify am2server right away so that it
+	 * doesn't try to send/read any more data */
+	disable_irq(aes1750->spi->irq);
+	atomic_set(&aes1750->is_suspended, 1);
+	aes1750_send_user_signal(aes1750, AES1750_SIGNAL_SUSPEND);
+
 	/* Reset the sensor so that it is in low-power mode. */
 	aes1750_reset(aes1750);
 
-	aes1750_send_user_signal(aes1750, AES1750_SIGNAL_SUSPEND);
-	disable_irq(aes1750->spi->irq);
-	atomic_set(&aes1750->is_suspended, 1);
 	aes1750_info("finished\n");
 
 	return 0;
