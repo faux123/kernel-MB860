@@ -1465,7 +1465,7 @@ void ecryptfs_i_size_init(const char *page_virt, struct inode *inode)
 	if (mount_crypt_stat->flags & ECRYPTFS_ENCRYPTED_VIEW_ENABLED) {
 		file_size = i_size_read(ecryptfs_inode_to_lower(inode));
 		if (crypt_stat->flags & ECRYPTFS_METADATA_IN_XATTR)
-			file_size += crypt_stat->num_header_bytes_at_front;
+			file_size += crypt_stat->metadata_size;
 	} else
 		file_size = get_unaligned_be64(page_virt);
 	i_size_write(inode, (loff_t)file_size);
