@@ -338,6 +338,10 @@ config MOT_TCMD_DRIVER
        bool "Motorola tcmd driver"
        default n
 
+config MOT_VPNCLIENT
+	tristate "Motorola Authentec vpnclient userspace module"
+	default m
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
