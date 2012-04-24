@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.32.56
-# Mon Apr 23 19:13:43 2012
+# Tue Apr 24 11:12:05 2012
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -271,8 +271,7 @@ CONFIG_TEGRA_ODM_SUNFIRE=y
 CONFIG_PM_DEEPSLEEP=y
 # CONFIG_FAKE_SHMOO is not set
 CONFIG_DDR2_SDRAM_FREQ=300000
-# CONFIG_STOCK_VOLTAGE is not set
-# CONFIG_OC_1300 is not set
+CONFIG_STOCK_VOLTAGE=y
 
 #
 # Processor Type
