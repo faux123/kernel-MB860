@@ -390,7 +390,7 @@ static int vfp_pm_suspend(struct sys_device *dev, pm_message_t state)
 	}
 
 	/* clear any information we had about last context state */
-	memset(last_VFP_context, 0, sizeof(last_VFP_context));
+	last_VFP_context[ti->cpu] = NULL;
 
 	return 0;
 }
@@ -588,7 +588,9 @@ static int __init vfp_init(void)
 {
 	unsigned int vfpsid;
 	unsigned int cpu_arch = cpu_architecture();
-
+#ifdef CONFIG_SMP
+	preempt_disable();
+#endif
 	if (cpu_arch >= CPU_ARCH_ARMv6)
 		vfp_enable(NULL);
 
@@ -602,6 +604,9 @@ static int __init vfp_init(void)
 	vfpsid = fmrx(FPSID);
 	barrier();
 	vfp_vector = vfp_null_entry;
+#ifdef CONFIG_SMP
+	preempt_enable();
+#endif
 
 	printk(KERN_INFO "VFP support v0.3: ");
 	if (VFP_arch)
@@ -609,7 +614,7 @@ static int __init vfp_init(void)
 	else if (vfpsid & FPSID_NODOUBLE) {
 		printk("no double precision support\n");
 	} else {
-		smp_call_function(vfp_enable, NULL, 1);
+		on_each_cpu(vfp_enable, NULL, 1);
 
 		VFP_arch = (vfpsid & FPSID_ARCH_MASK) >> FPSID_ARCH_BIT;  /* Extract the architecture version */
 		printk("implementor %02x architecture %d part %02x variant %x rev %x\n",

@@ -3669,3 +3669,19 @@ NvRmDiagGetTemperature(
             return NvError_NotSupported;
     }
 }
+
+/* sys_sync lock up issue */
+void NvRmPrivDfsStopAtNominalBeforeSync(void)
+{
+    NvRmPrivLockSharedPll();
+    NvRmPrivDvsStopAtNominal();
+    NvRmPrivDvsStop();
+    NvRmPrivUnlockSharedPll();
+}
+
+void NvRmPrivDfsRunAfterSync(void)
+{
+    NvRmPrivLockSharedPll();
+    NvRmPrivDvsRun();
+    NvRmPrivUnlockSharedPll();
+}
