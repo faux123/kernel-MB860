@@ -92,7 +92,7 @@ struct suspend_context
 
 volatile struct suspend_context tegra_sctx;
 
-unsigned long save_avp_resume_addr = 0;
+static unsigned long avp_resume_address = 0;
 
 #ifdef CONFIG_HOTPLUG_CPU
 extern void tegra_board_nvodm_suspend(void);
@@ -742,11 +742,14 @@ static int tegra_suspend_prepare_late(void)
 		return -EIO;
 	}
 
-	/* write 0 to PMC_SCRATCH39 so that AVP halts after WB0 resume
-	 * we resume AVP after the basic resume on CPU is done */
-	writel(0, pmc + PMC_SCRATCH39);
-	save_avp_resume_addr = *((volatile unsigned int *)iram_avp_resume);
-	rmb();
+        /* store avp resume address that AVP firmware wrote
+         * in 1st word of IRAM */
+         avp_resume_address = *((unsigned long *)iram_avp_resume);
+         rmb();
+
+         /* write 0 to PMC_SCRATCH39 so that AVP halts after WB0 resume
+         * we resume AVP after the basic resume on CPU is done */
+         writel(0, pmc + PMC_SCRATCH39);
 
 #endif
 	disable_irq(INT_SYS_STATS_MON);
@@ -770,7 +773,7 @@ static void tegra_suspend_wake(void)
 	}
 	tegra_board_nvodm_resume();
 #endif
-	ret = tegra_avp_resume(save_avp_resume_addr);
+	ret = tegra_avp_resume(avp_resume_address);
 	if (ret < 0)
 		pr_err("%s: AVP failed to resume\n", __func__);
 

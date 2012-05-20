@@ -44,8 +44,8 @@
 #include <linux/compiler.h>
 #include <asm/unaligned.h>
 
-static const unsigned char lzop_magic[] =
-	{ 0x89, 0x4c, 0x5a, 0x4f, 0x00, 0x0d, 0x0a, 0x1a, 0x0a };
+static const unsigned char lzop_magic[] = {
+	0x89, 0x4c, 0x5a, 0x4f, 0x00, 0x0d, 0x0a, 0x1a, 0x0a };
 
 #define LZO_BLOCK_SIZE        (256*1024l)
 #define HEADER_HAS_FILTER      0x00000800L
@@ -101,9 +101,9 @@ STATIC inline int INIT unlzo(u8 *input, int in_len,
 
 	set_error_fn(error_fn);
 
-	if (output)
+	if (output) {
 		out_buf = output;
-	else if (!flush) {
+	} else if (!flush) {
 		error("NULL output pointer and no flush function provided");
 		goto exit;
 	} else {
@@ -117,9 +117,9 @@ STATIC inline int INIT unlzo(u8 *input, int in_len,
 	if (input && fill) {
 		error("Both input pointer and fill function provided, don't know what to do");
 		goto exit_1;
-	} else if (input)
+	} else if (input) {
 		in_buf = input;
-	else if (!fill || !posp) {
+	} else if (!fill || !posp) {
 		error("NULL input pointer and missing position pointer or fill function");
 		goto exit_1;
 	} else {
@@ -174,7 +174,8 @@ STATIC inline int INIT unlzo(u8 *input, int in_len,
 
 		/* decompress */
 		tmp = dst_len;
-		r = lzo1x_decompress_safe((u8 *) in_buf, src_len, out_buf, &tmp);
+		r = lzo1x_decompress_safe((u8 *) in_buf, src_len,
+						out_buf, &tmp);
 
 		if (r != LZO_E_OK || dst_len != tmp) {
 			error("Compressed data violation");

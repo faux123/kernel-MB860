@@ -36,6 +36,7 @@ obj-$(CONFIG_VIB_GPIO)		+= vib-gpio.o
 obj-$(CONFIG_VIB_PWM)		+= vib-pwm.o
 obj-$(CONFIG_MOT_SEC_DRIVER)	+= sec/
 obj-$(CONFIG_MOT_TCMD_DRIVER)	+= tcmd_driver.o
+obj-$(CONFIG_MOT_VPNCLIENT)	+= vpndriver/
 obj-$(CONFIG_MDM_CTRL)		+= mdm_ctrl.o
 obj-y                           += radio_ctrl/
 obj-$(CONFIG_SENSORS_L3G4200D)	+= l3g4200d.o

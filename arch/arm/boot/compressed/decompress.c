@@ -6,8 +6,16 @@
 #include <linux/linkage.h>
 #include <asm/string.h>
 
-extern unsigned long free_mem_ptr;
-extern unsigned long free_mem_end_ptr;
+#include <asm/unaligned.h>
+
+#ifdef STANDALONE_DEBUG
+# define putstr printf
+#endif
+
+#include <mach/uncompress.h>
+
+unsigned long free_mem_ptr;
+unsigned long free_mem_end_ptr;
 extern void error(char *);
 
 #define STATIC static
@@ -32,24 +40,16 @@ extern void error(char *);
 #  define Tracecv(c,x)
 #endif
 
-#ifdef CONFIG_KERNEL_GZIP
-#include "../../../../lib/decompress_inflate.c"
-#endif
-
-#ifdef CONFIG_KERNEL_BZIP2
-#include "../../../../lib/decompress_bunzip2.c"
-#endif
-
-#ifdef CONFIG_KERNEL_LZMA
-#include "../../../../lib/decompress_unlzma.c"
-#endif
-
-#ifdef CONFIG_KERNEL_LZO
-#include "../../../../lib/decompress_unlzo.c"
-#endif
-
-#ifdef CONFIG_KERNEL_XZ
+#if defined(CONFIG_KERNEL_XZ)
 #include "../../../../lib/decompress_unxz.c"
+#elif defined(CONFIG_KERNEL_GZIP)
+#include "../../../../lib/decompress_inflate.c"
+#elif defined(CONFIG_KERNEL_BZIP2)
+#include "../../../../lib/decompress_bunzip2.c"
+#elif defined(CONFIG_KERNEL_LZMA)
+#include "../../../../lib/decompress_unlzma.c"
+#elif defined(CONFIG_KERNEL_LZO)
+#include "../../../../lib/decompress_unlzo.c"
 #endif
 
 void do_decompress(u8 *input, int len, u8 *output, void (*error)(char *x))

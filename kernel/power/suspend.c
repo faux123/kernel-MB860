@@ -17,6 +17,7 @@
 #include <linux/syscalls.h>
 
 #include "power.h"
+#include "nvrm_power_private.h"
 
 const char *const pm_states[PM_SUSPEND_MAX] = {
 #ifdef CONFIG_EARLYSUSPEND
@@ -278,8 +279,11 @@ int enter_state(suspend_state_t state)
  */
 #ifndef CONFIG_MACH_MOT
 	printk(KERN_INFO "PM: Syncing filesystems ... ");
+	/* sys_sync lock up issue */
+	NvRmPrivDfsStopAtNominalBeforeSync();
 	sys_sync();
 	printk("done.\n");
+	NvRmPrivDfsRunAfterSync();
 #endif
 
 	pr_debug("PM: Preparing system for %s sleep\n", pm_states[state]);
