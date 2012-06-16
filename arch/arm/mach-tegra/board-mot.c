@@ -794,9 +794,8 @@ static void __init tegra_mot_init(void)
 		}
 	}
 
-        if (machine_is_tegra_daytona())
-                config_unused_pins(daytona_unused_pins_p1, ARRAY_SIZE(daytona_unused_pins_p1));
-
+	if (machine_is_tegra_daytona())
+		config_unused_pins(daytona_unused_pins_p1, ARRAY_SIZE(daytona_unused_pins_p1));
 
 	if (machine_is_etna() || machine_is_tegra_daytona() || machine_is_sunfire())
 		// UTS tool support
@@ -819,7 +818,7 @@ static void __init mot_fixup(struct machine_desc *desc, struct tag *tags,
 		case ATAG_POWERUP_REASON:  // F1000401 ex: 0x4000, parsed after... ignore
 			break;
 		case ATAG_CORE:     // 54410001
-			printk("%s: atag_core pagesize=%d.\n", __func__, t->u.core.pagesize);
+			printk("%s: atag_core hdr.size=%d\n", __func__, t->hdr.size);
 			break;
 		case ATAG_CMDLINE:
 			printk("%s: atag_cmdline=\"%s\"\n", __func__, t->u.cmdline.cmdline);
@@ -831,10 +830,10 @@ static void __init mot_fixup(struct machine_desc *desc, struct tag *tags,
 			printk("%s: atag_serial=%x%x\n", __func__, t->u.serialnr.low, t->u.serialnr.high);
 			break;
 		case ATAG_INITRD2:  // 54420005
-			printk("%s: atag_initrd2=0x%x/%x\n", __func__, t->u.initrd.start, t->u.initrd.size);
+			printk("%s: atag_initrd2=0x%x size=0x%x\n", __func__, t->u.initrd.start, t->u.initrd.size);
 			break;
 		case ATAG_MEM:
-			printk("%s: atag_mem.start=0x%x, mem.size=%d\n", __func__, t->u.mem.start, t->u.mem.size);
+			printk("%s: atag_mem.start=0x%x, mem.size=0x%x\n", __func__, t->u.mem.start, t->u.mem.size);
 			break;
 #ifdef CONFIG_MACH_MOT
 		case ATAG_MOTOROLA: // 41000810
@@ -842,8 +841,7 @@ static void __init mot_fixup(struct machine_desc *desc, struct tag *tags,
 			break;
 #endif
 		case ATAG_NVIDIA_TEGRA: // 41000801
-			printk("%s: atag_tegra=0x%X (len=%d.)\n", __func__,
-				t->u.tegra.bootarg_key, t->u.tegra.bootarg_len);
+			printk("%s: atag_tegra=0x%X\n", __func__, t->u.tegra.bootarg_key);
 			break;
 		default:
 			printk("%s: ATAG %X\n", __func__, t->hdr.tag);

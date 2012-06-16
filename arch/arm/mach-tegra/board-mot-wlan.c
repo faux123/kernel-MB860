@@ -42,6 +42,8 @@
 
 #define WLAN_SKB_BUF_NUM        16
 
+static bool wlan_ctrl_ready = false;
+
 static struct sk_buff *wlan_static_skb[WLAN_SKB_BUF_NUM];
 char mot_wlan_mac[6] = {0x00, 0x90, 0xC3, 0x00, 0x00, 0x00};
 
@@ -180,7 +182,7 @@ static void *mot_wifi_mem_prealloc(int section, unsigned long size)
 		if (wifi_mem_array[i].mem_ptr == NULL)
 			return -ENOMEM;
 	}
-return 0;
+	return 0;
  }
 
 static struct resource mot_wifi_resources[] = {
@@ -310,6 +312,7 @@ static struct resource mot_wifi_resources[] = {
 
  int __init mot_wlan_init(void)
  {
+	int ret;
 	pr_debug("%s: start\n", __func__);
 	mot_wlan_gpio_init();
 	mot_init_wifi_mem();
@@ -320,14 +323,16 @@ static struct resource mot_wifi_resources[] = {
 		mot_locales_table_ptr = olympus_locales_table;
 		mot_locales_table_size = ARRAY_SIZE(olympus_locales_table);
 	}
-	return platform_device_register(&mot_wifi_device);
+	ret = platform_device_register(&mot_wifi_device);
+	wlan_ctrl_ready = (ret == 0);
+	return ret;
  }
 
 #ifdef CONFIG_WIFI_CONTROL_EXPORT
 
- void bcm_wlan_power_on(unsigned mode)
+ void bcm_wlan_power_on(int mode)
  {
-	if (0 == wlan_ctrl.ready) {
+	if (0 == wlan_ctrl_ready) {
 		pr_err("%s WLAN control not ready\n", __func__);
 		return;
 	}
@@ -342,9 +347,9 @@ static struct resource mot_wifi_resources[] = {
  }
  EXPORT_SYMBOL(bcm_wlan_power_on);
 
- void bcm_wlan_power_off(unsigned mode)
+ void bcm_wlan_power_off(int mode)
  {
-	if (0 == wlan_ctrl.ready) {
+	if (0 == wlan_ctrl_ready) {
 		pr_err("%s WLAN control not ready\n", __func__);
 		return;
 	}

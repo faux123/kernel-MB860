@@ -87,7 +87,10 @@ static int __init tegrapart_setup(char *options)
 		length *= sector_sz;
 		part->offset = start;
 		part->size = length;
-        pr_info("%s: %s: start=%llu, length=%llu\n", __func__, part->name, part->offset, part->size);
+
+		pr_info("%s: %s at offset 0x%llx %llukB\n", __func__, part->name,
+			part->offset, part->size / 1024);
+
 		tegra_nand_plat.nr_parts++;
 		str = tmp+1;
 
