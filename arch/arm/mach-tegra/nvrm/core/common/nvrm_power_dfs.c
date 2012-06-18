@@ -52,6 +52,10 @@
 #include "ap20/ap20rm_power_dfs.h"
 #include "ap20/ap20rm_clocks.h"
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+#include <linux/earlysuspend.h>
+#endif
+
 #ifdef CONFIG_FAKE_SHMOO
 #include <linux/kernel.h>
 
@@ -1413,6 +1417,9 @@ static void DfsIsr(void* args)
 /*****************************************************************************/
 // DFS CLOCK CONTROL THREAD
 /*****************************************************************************/
+#ifdef CONFIG_HAS_EARLYSUSPEND
+extern unsigned int cpufreq_gov_lcd_status;
+#endif
 
 static NvRmPmRequest DfsThread(NvRmDfs* pDfs)
 {
@@ -1510,6 +1517,15 @@ static NvRmPmRequest DfsThread(NvRmDfs* pDfs)
                             DfsKHz.Domains[i] = NewBusyKHz;
                         }
                     }
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+                    /* artificially limit max cpu freq while screen is off */
+                    if (cpufreq_gov_lcd_status == 0 && 
+                        i == NvRmDfsClockId_Cpu) {
+                        HighKHz.Domains[i] = 503000;
+                    }
+#endif
+
                     // Clip new dfs target to high domain corner
                     if (DfsKHz.Domains[i] > HighKHz.Domains[i])
                     {

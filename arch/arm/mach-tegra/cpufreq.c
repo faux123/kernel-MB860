@@ -46,6 +46,7 @@
 
 #include <nvrm_power.h>
 #include <nvrm_power_private.h>
+#include <linux/earlysuspend.h>
 
 #define KTHREAD_IRQ_PRIO (MAX_RT_PRIO>>1)
 
@@ -54,6 +55,8 @@ static struct task_struct *cpufreq_dfsd = NULL;
 static struct clk *clk_cpu = NULL;
 
 static DEFINE_MUTEX(init_mutex);
+static DEFINE_MUTEX(early_mutex);
+unsigned int cpufreq_gov_lcd_status;
 
 #ifdef CONFIG_HOTPLUG_CPU
 static int disable_hotplug = 0;
@@ -233,7 +236,9 @@ static int tegra_cpufreq_dfsd(void *arg)
 			last_rate = rate;
 		}
 #endif
+
 		freqs.new = tegra_freq_table_get_freq(freq_table , rate / 1000);
+
 		if (freqs.new != freqs.old) {
 		   for_each_online_cpu(freqs.cpu)
 		     cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
@@ -285,6 +290,34 @@ int tegra_start_dvfsd(void) {
 
 	return rc;
 }
+
+static void tegra_cpu_early_suspend(struct early_suspend *h)
+{
+	mutex_lock(&early_mutex);
+	cpufreq_gov_lcd_status = 0;
+	/* turn off 2nd cpu ALWAYS */
+	if (num_online_cpus() > 1)
+		cpu_down(1);
+
+	mutex_unlock(&early_mutex);
+}
+
+static void tegra_cpu_late_resume(struct early_suspend *h)
+{
+	mutex_lock(&early_mutex);
+	/* restore dual core operations */
+	if (num_online_cpus() < 2)
+		cpu_up(1);
+
+	cpufreq_gov_lcd_status = 1;
+	mutex_unlock(&early_mutex);
+}
+
+static struct early_suspend tegra_cpu_early_suspend_handler = {
+	.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN,
+	.suspend = tegra_cpu_early_suspend,
+	.resume = tegra_cpu_late_resume,
+};
 
 static int tegra_cpufreq_init_once(void)
 {
@@ -410,6 +443,10 @@ static int __init tegra_cpufreq_init(void)
 #ifdef CONFIG_HOTPLUG_CPU
 	pm_notifier(tegra_cpufreq_pm_notifier, 0);
 #endif
+
+	cpufreq_gov_lcd_status = 1;
+	register_early_suspend(&tegra_cpu_early_suspend_handler);
+
 	return cpufreq_register_driver(&s_tegra_cpufreq_driver);
 }
 
