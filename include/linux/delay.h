@@ -46,10 +46,16 @@ void calibrate_delay(void);
 void msleep(unsigned int msecs);
 unsigned long msleep_interruptible(unsigned int msecs);
 void usleep_range(unsigned long min, unsigned long max);
+unsigned long usleep_range_interruptible(unsigned long min, unsigned long max);
 
 static inline void usleep(unsigned long usecs)
 {
 	usleep_range(usecs, usecs);
+}
+
+static inline unsigned long usleep_interruptible(unsigned long usecs)
+{
+	return usleep_range_interruptible(usecs, usecs);
 }
 
 static inline void ssleep(unsigned int seconds)
