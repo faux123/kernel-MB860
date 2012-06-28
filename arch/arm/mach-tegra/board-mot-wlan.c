@@ -337,12 +337,12 @@ static struct resource mot_wifi_resources[] = {
 		return;
 	}
 	gpio_set_value(WLAN_REG_ON_GPIO, 0x1);
-	msleep(100);
+	msleep_interruptible(100);
 	gpio_set_value(WLAN_RESET_GPIO, 0x1);
-	msleep(100);
+	msleep_interruptible(100);
 	if (1 == mode){
 		sdhci_tegra_wlan_detect();
-		msleep(100);
+		msleep_interruptible(100);
 	}
  }
  EXPORT_SYMBOL(bcm_wlan_power_on);
@@ -354,12 +354,12 @@ static struct resource mot_wifi_resources[] = {
 		return;
 	}
 	gpio_set_value(WLAN_RESET_GPIO, 0x0);
-	msleep(100);
+	msleep_interruptible(100);
 	gpio_set_value(WLAN_REG_ON_GPIO, 0x0);
-	msleep(100);
+	msleep_interruptible(100);
 	if (1 == mode){
 		sdhci_tegra_wlan_detect();
-		msleep(100);
+		msleep_interruptible(100);
 	}
  }
  EXPORT_SYMBOL(bcm_wlan_power_off);
