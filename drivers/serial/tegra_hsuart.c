@@ -296,6 +296,9 @@ static void tegra_start_dma_tx(struct tegra_uart_port *t, unsigned long bytes)
 	struct circ_buf *xmit;
 	xmit = &t->uport.state->xmit;
 
+	if (IS_ERR_OR_NULL(t->tx_dma))
+		return;
+
 	dma_sync_single_for_device(t->uport.dev, t->xmit_dma_addr,
 		UART_XMIT_SIZE, DMA_TO_DEVICE);
 
