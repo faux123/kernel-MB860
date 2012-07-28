@@ -71,18 +71,17 @@ static void set_curr_task_idle(struct rq *rq)
 {
 }
 
-static void switched_to_idle(struct rq *rq, struct task_struct *p,
-			     int running)
+static void switched_to_idle(struct rq *rq, struct task_struct *p)
 {
 	/* Can this actually happen?? */
-	if (running)
+	if (rq->curr == p)
 		resched_task(rq->curr);
 	else
 		check_preempt_curr(rq, p, 0);
 }
 
-static void prio_changed_idle(struct rq *rq, struct task_struct *p,
-			      int oldprio, int running)
+static void
+prio_changed_idle(struct rq *rq, struct task_struct *p, int oldprio)
 {
 	/* This can happen for hot plug CPUS */
 
@@ -91,7 +90,7 @@ static void prio_changed_idle(struct rq *rq, struct task_struct *p,
 	 * our priority decreased, or if we are not currently running on
 	 * this runqueue and our priority is higher than the current's
 	 */
-	if (running) {
+	if (rq->curr == p) {
 		if (p->prio > oldprio)
 			resched_task(rq->curr);
 	} else
