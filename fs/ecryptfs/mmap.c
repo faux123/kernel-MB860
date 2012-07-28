@@ -572,6 +572,12 @@ static sector_t ecryptfs_bmap(struct address_space *mapping, sector_t block)
 							 block);
 	return rc;
 }
+static ssize_t
+ecryptfs_direct_IO(int rw, struct kiocb *iocb, const struct iovec *iov,
+		loff_t offset, unsigned long nr_segs)
+{
+	return 0;
+}
 
 const struct address_space_operations ecryptfs_aops = {
 	.writepage = ecryptfs_writepage,
@@ -579,4 +585,5 @@ const struct address_space_operations ecryptfs_aops = {
 	.write_begin = ecryptfs_write_begin,
 	.write_end = ecryptfs_write_end,
 	.bmap = ecryptfs_bmap,
+	.direct_IO = ecryptfs_direct_IO,
 };
